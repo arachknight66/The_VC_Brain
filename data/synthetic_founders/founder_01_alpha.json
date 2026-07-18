@@ -1,0 +1,20 @@
+{
+  "name": "Priya Nandakumar",
+  "company_name": "Ridgeline Dev Tools",
+  "source_channel": "github_scan",
+  "raw_inputs": {
+    "deck_text": "Ridgeline is a CI/CD observability layer for platform teams. We are at $38,000 MRR with 40% month-over-month growth for the last four months. We have 1,150 weekly active developers across 210 paying teams. I (Priya) was a founding engineer at Stripe for three years on the developer platform team before starting Ridgeline. Our co-founder Wes led infrastructure at Datadog for two years. We went through Techstars NYC in 2024. We were ranked #2 Product of the Day on Product Hunt in March 2025.",
+    "deck_images": [],
+    "github_handle": "ridgeline-dev",
+    "linkedin_url": "https://www.linkedin.com/in/priya-nandakumar-dev",
+    "claimed_hackathon": null,
+    "claimed_demo_url": null,
+    "twitter_handle": "@ridgelinedev",
+    "blog_url": "https://ridgeline.dev/blog",
+    "has_funding_history": true,
+    "has_accelerator_history": true,
+    "sector": "developer tools",
+    "stage": "seed",
+    "geography": "US"
+  }
+}

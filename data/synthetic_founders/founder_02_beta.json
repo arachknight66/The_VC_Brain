@@ -1,0 +1,20 @@
+{
+  "name": "Marcus Ihediwa",
+  "company_name": "Ledgerly",
+  "source_channel": "inbound",
+  "raw_inputs": {
+    "deck_text": "Ledgerly embeds B2B payments and lending into vertical SaaS platforms. We believe the global embedded-finance market will reach $700 billion in annual revenue by 2026, up from near zero today. We have signed 3 vertical SaaS design partners and are processing roughly $60,000 in monthly payment volume in a closed beta. I spent four years as a backend engineer at a mid-size payments processor before starting Ledgerly; this is my first time as a founder. We have not yet raised outside capital and have not been through an accelerator program.",
+    "deck_images": [],
+    "github_handle": "mihediwa",
+    "linkedin_url": "https://www.linkedin.com/in/marcus-ihediwa",
+    "claimed_hackathon": null,
+    "claimed_demo_url": null,
+    "twitter_handle": "@ledgerlyhq",
+    "blog_url": null,
+    "has_funding_history": false,
+    "has_accelerator_history": false,
+    "sector": "fintech",
+    "stage": "pre-seed",
+    "geography": "US"
+  }
+}
