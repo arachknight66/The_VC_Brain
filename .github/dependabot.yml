@@ -4,7 +4,7 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
-  - package-ecosystem: maven
+  - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
@@ -12,4 +12,3 @@ updates:
     directory: /
     schedule:
       interval: weekly
-

@@ -20,8 +20,13 @@ frontend/.vite/
 frontend/coverage/
 
 # Backend
-backend/target/
-backend/.mvn/wrapper/maven-wrapper.jar
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/htmlcov/
+*.pyc
 
 # Test and generated artifacts
 coverage/
@@ -30,4 +35,3 @@ test-results/
 
 # Docker
 *.pid
-
