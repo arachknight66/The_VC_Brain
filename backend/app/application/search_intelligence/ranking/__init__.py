@@ -1,0 +1,2 @@
+"""Deterministic search ranking."""
+

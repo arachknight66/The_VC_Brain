@@ -1,0 +1,2 @@
+"""Search observability domain models."""
+

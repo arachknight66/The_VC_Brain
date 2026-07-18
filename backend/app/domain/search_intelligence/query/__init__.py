@@ -1,0 +1,2 @@
+"""Search query domain objects."""
+

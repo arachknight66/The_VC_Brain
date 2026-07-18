@@ -1,0 +1,2 @@
+"""Tavily client adapter."""
+

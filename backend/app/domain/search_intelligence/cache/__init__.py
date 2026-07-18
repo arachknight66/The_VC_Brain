@@ -1,0 +1,2 @@
+"""Search cache domain models."""
+
