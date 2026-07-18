@@ -1,39 +1,15 @@
-# Environment
-.env
-.env.*
-!.env.example
-
-# Logs
-*.log
-logs/
-
-# OS and editors
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/.next/
-frontend/coverage/
-frontend/*.tsbuildinfo
-
-# Backend
-backend/.venv/
-backend/__pycache__/
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.ruff_cache/
-backend/htmlcov/
+__pycache__/
 *.pyc
-
-# Test and generated artifacts
-coverage/
-playwright-report/
-test-results/
-
-# Docker
-*.pid
+*.pyo
+.venv/
+venv/
+env/
+.env
+*.db
+memory/vc_brain.db
+.pytest_cache/
+.DS_Store
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
