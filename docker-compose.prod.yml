@@ -1,0 +1,12 @@
+services:
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    restart: unless-stopped
+
+  frontend:
+    restart: unless-stopped
+
+  postgres:
+    restart: unless-stopped
+
