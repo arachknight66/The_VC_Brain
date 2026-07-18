@@ -102,14 +102,14 @@ prompts/
 cp .env.example .env
 ```
 
-2. Fill in required API keys.
+1. Fill in required API keys.
 
 ```text
 OPENAI_API_KEY=
 TAVILY_API_KEY=
 ```
 
-3. Start the stack.
+1. Start the stack.
 
 ```bash
 docker compose up --build
@@ -118,7 +118,7 @@ docker compose up --build
 Expected local services:
 
 - Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8080`
+- Backend: `http://localhost:8000`
 - PostgreSQL: `localhost:5432`
 
 ## Local Development
@@ -130,7 +130,7 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8000
 ```
 
 Frontend:
@@ -196,12 +196,6 @@ Screenshots will be added as the frontend implementation lands.
 - Diligence Workspace
 - Investment Memo
 - Adversarial View
-
-## Contributors
-
-- Bhargavi Kurukunda
-- Nikita
-- Daksh
 
 ## License
 
