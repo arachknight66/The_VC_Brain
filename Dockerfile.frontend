@@ -7,8 +7,10 @@ RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
-RUN npm install -g serve
-COPY --from=build /app/dist ./dist
+ENV NODE_ENV=production
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/node_modules ./node_modules
 EXPOSE 5173
-CMD ["serve", "-s", "dist", "-l", "5173"]
-
+CMD ["npm", "run", "start"]

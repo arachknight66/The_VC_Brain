@@ -1,4 +1,4 @@
-export function SignalsPage() {
+export default function SignalsPage() {
   return null;
 }
 

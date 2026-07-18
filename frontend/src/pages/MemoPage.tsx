@@ -1,4 +1,4 @@
-export function MemoPage() {
+export default function MemoPage() {
   return null;
 }
 

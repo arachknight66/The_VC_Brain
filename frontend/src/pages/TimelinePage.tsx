@@ -1,4 +1,4 @@
-export function TimelinePage() {
+export default function TimelinePage() {
   return null;
 }
 

@@ -1,4 +1,4 @@
-export function FounderProfilePage() {
+export default function FounderProfilePage() {
   return null;
 }
 

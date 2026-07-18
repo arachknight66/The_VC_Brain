@@ -1,4 +1,4 @@
-export function RecommendationPage() {
+export default function RecommendationPage() {
   return null;
 }
 

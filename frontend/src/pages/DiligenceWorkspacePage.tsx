@@ -1,4 +1,4 @@
-export function DiligenceWorkspacePage() {
+export default function DiligenceWorkspacePage() {
   return null;
 }
 

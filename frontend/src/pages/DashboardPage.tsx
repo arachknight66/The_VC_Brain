@@ -1,4 +1,4 @@
-export function DashboardPage() {
+export default function DashboardPage() {
   return null;
 }
 

@@ -80,7 +80,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    User["Investor / Founder"] --> FE["React Frontend"]
+    User["Investor / Founder"] --> FE["Next.js React Frontend"]
     FE --> API["FastAPI Backend"]
     API --> App["Application Services"]
     App --> Domain["Domain Model"]
@@ -121,10 +121,11 @@ flowchart TD
 
 ## Frontend Architecture
 
-The frontend is organized by product feature:
+The frontend uses Next.js with the App Router and is organized by product feature:
 
 ```text
 frontend/src/
+  app/                     Next.js app router entry points
   pages/                   Route-level screens
   features/                Feature-specific components, hooks, services, types
   api/                     API clients

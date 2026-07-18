@@ -57,7 +57,7 @@ Tavily is treated as a Search Intelligence provider behind a provider-neutral po
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 19, Vite, TypeScript, TailwindCSS, shadcn/ui |
+| Frontend | Next.js, React 19, TypeScript, TailwindCSS, shadcn/ui |
 | Backend | Python 3.12, FastAPI, Pydantic |
 | Database | PostgreSQL, Alembic-style migrations |
 | AI | OpenAI API, Structured Outputs, function-style structured calls |
@@ -169,7 +169,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
 | `TAVILY_TIMEOUT_SECONDS` | Tavily request timeout |
 | `TAVILY_MAX_RETRIES` | Tavily retry limit |
 | `APP_API_KEY` | Optional API protection key |
-| `VITE_API_BASE_URL` | Frontend API base URL |
+| `NEXT_PUBLIC_API_BASE_URL` | Frontend API base URL |
 
 ## Demo Overview
 

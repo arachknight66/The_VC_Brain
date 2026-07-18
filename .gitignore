@@ -17,7 +17,9 @@ Thumbs.db
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.next/
 frontend/coverage/
+frontend/*.tsbuildinfo
 
 # Backend
 backend/.venv/

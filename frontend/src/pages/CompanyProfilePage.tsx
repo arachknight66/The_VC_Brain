@@ -1,4 +1,4 @@
-export function CompanyProfilePage() {
+export default function CompanyProfilePage() {
   return null;
 }
 

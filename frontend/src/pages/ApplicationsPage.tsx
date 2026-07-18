@@ -1,4 +1,4 @@
-export function ApplicationsPage() {
+export default function ApplicationsPage() {
   return null;
 }
 

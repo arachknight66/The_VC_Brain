@@ -52,7 +52,7 @@ Trade-offs:
 - less built-in enterprise structure than Spring Boot
 - team must enforce layering conventions
 
-## ADR 003: Use React For Frontend
+## ADR 003: Use Next.js And React For Frontend
 
 Context:
 
@@ -60,21 +60,21 @@ The investor workspace needs a polished dashboard, evidence explorer, scorecards
 
 Decision:
 
-Use React 19, Vite, TypeScript, TailwindCSS, and shadcn/ui.
+Use Next.js, React 19, TypeScript, TailwindCSS, and shadcn/ui.
 
 Alternatives considered:
 
-- Next.js
 - Vue
-- plain Vite without shadcn/ui
+- Vite
+- plain React without shadcn/ui
 
 Why chosen:
 
-React and Vite are fast for hackathon development. TypeScript improves API safety. shadcn/ui accelerates professional UI.
+Next.js gives file-based routing, production-ready builds, and a clean deployment path while preserving React speed for the investor workspace. TypeScript improves API safety. shadcn/ui accelerates professional UI.
 
 Trade-offs:
 
-- no server-side rendering by default
+- more framework structure than Vite
 - design consistency depends on disciplined component use
 
 ## ADR 004: Use Tavily As Default Search Intelligence Provider

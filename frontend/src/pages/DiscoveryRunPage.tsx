@@ -1,4 +1,4 @@
-export function DiscoveryRunPage() {
+export default function DiscoveryRunPage() {
   return null;
 }
 

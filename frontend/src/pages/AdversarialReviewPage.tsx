@@ -1,4 +1,4 @@
-export function AdversarialReviewPage() {
+export default function AdversarialReviewPage() {
   return null;
 }
 
