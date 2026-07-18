@@ -1,6 +1,0 @@
-## Summary
-
-## Verification
-
-## Architecture Notes
-
