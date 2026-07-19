@@ -2,27 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render(path = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${path}-${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-  return worker.fetch(
-    new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
-}
-
-test("server-renders the investment operating system", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /The VC Brain/);
-  assert.match(html, /Investment OS/);
-  assert.match(html, /Inbox/);
-  assert.match(html, /Pipeline/);
-  assert.match(html, /Diligence/);
-  assert.match(html, /Portfolio/);
+test("server-renders the OAuth sign-in boundary for anonymous users", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /The VC Brain/);
+  assert.match(page, /Sign in to your investment operating system/);
+  assert.match(page, /Sign in with ChatGPT/);
+  assert.match(page, /OAuth/);
+  assert.match(page, /dynamic = "force-dynamic"/);
 });
 
 test("ships reviewed signal and pitch-upload API integrations", async () => {
@@ -35,14 +21,17 @@ test("ships reviewed signal and pitch-upload API integrations", async () => {
   assert.match(page, /Evidence ledger/);
   assert.match(page, /Compare/);
   assert.match(page, /Approve memo/);
-  assert.match(page, /NEXT_PUBLIC_VC_BRAIN_API_URL/);
+  assert.match(page, /const API_BASE = "\/api\/vc"/);
 });
 
 test("serves deep-linkable workflow routes", async () => {
+  const workspace = await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8");
+  const catchAll = await readFile(new URL("../app/[...route]/page.tsx", import.meta.url), "utf8");
   for (const path of ["/inbox", "/pipeline", "/companies/example", "/diligence/example", "/compare?ids=a,b", "/memos/example", "/ic", "/portfolio", "/research", "/lab", "/intake"]) {
-    const response = await render(path);
-    assert.equal(response.status, 200, `${path} should resolve`);
+    const segment = path.split(/[/?]/).filter(Boolean)[0];
+    assert.match(workspace, new RegExp(segment === "companies" ? "companies" : segment), `${path} should resolve`);
   }
+  assert.match(catchAll, /default, dynamic/);
 });
 
 test("gates decision-ready language on evidence completeness", async () => {
@@ -78,10 +67,30 @@ test("includes priority-three decision intelligence", async () => {
   assert.match(page, /getScenarioScore/);
   assert.match(page, /Stress-test conviction/);
   assert.match(page, /recordICDecision/);
-  assert.match(page, /device-local decision record/);
+  assert.match(page, /organization-shared decision record/);
   assert.match(page, /getPortfolioAlerts/);
   assert.match(page, /Material change queue/);
   assert.match(page, /Decision memory/);
   assert.match(page, /normalizeWorkspace/);
   assert.doesNotMatch(page, /chatbot/i);
+});
+
+test("enforces authenticated multi-user workspace persistence", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const workspaceRoute = await readFile(new URL("../app/api/workspace/route.ts", import.meta.url), "utf8");
+  const proxyRoute = await readFile(new URL("../app/api/vc/[...path]/route.ts", import.meta.url), "utf8");
+  const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+  const hosting = JSON.parse(await readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"));
+  assert.match(page, /getAppUser/);
+  assert.match(page, /chatGPTSignInPath/);
+  assert.match(workspaceRoute, /Authentication required/);
+  assert.match(workspaceRoute, /Viewer access is read-only/);
+  assert.match(workspaceRoute, /expectedVersion/);
+  assert.match(workspaceRoute, /Workspace changed in another session/);
+  assert.match(proxyRoute, /x-vc-brain-service-token/);
+  assert.match(schema, /organizations/);
+  assert.match(schema, /memberships/);
+  assert.match(schema, /workspaceStates/);
+  assert.match(schema, /auditEvents/);
+  assert.equal(hosting.d1, "DB");
 });

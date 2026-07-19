@@ -84,6 +84,8 @@ a { color: inherit; }
 .user > span:nth-child(2) { min-width: 0; display: grid; flex: 1; }
 .user strong { font-size: 11px; }
 .user small { color: #8a97aa; font-size: 9px; margin-top: 2px; }
+.signout-link { min-height: 36px; margin: 6px 6px 0; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #69778d; font-size: 11px; text-decoration: none; }
+.signout-link:hover { color: #9c402d; background: #fff4f1; }
 .workspace { width: calc(100% - 236px); min-width: 0; margin-left: 236px; }
 .topbar {
   height: 65px;
@@ -751,6 +753,14 @@ button:disabled {
 .connection-state.offline { color: #9c402d; background: #fff4f1; border-color: #efc6bc; }
 .spin { animation: spin .85s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.auth-shell { min-height: 100vh; padding: 28px; display: grid; place-items: center; background: radial-gradient(circle at 50% 0%, #edf5ff 0, transparent 42%), var(--canvas); }
+.auth-card { width: min(520px, 100%); padding: 42px; border: 1px solid var(--line); border-radius: 18px; display: flex; flex-direction: column; align-items: flex-start; background: white; box-shadow: 0 24px 70px rgba(25, 44, 75, .12); }
+.auth-mark { width: 52px; height: 52px; margin-bottom: 26px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(135deg, var(--blue), #6759df); color: white; font-weight: 800; box-shadow: 0 10px 24px rgba(9, 105, 232, .24); }
+.auth-card h1 { margin: 12px 0 13px; font-size: clamp(29px, 5vw, 42px); line-height: 1.04; }
+.auth-card p { margin: 0; color: #5c6a7d; font-size: 14px; line-height: 1.65; }
+.auth-button { min-height: 48px; margin: 26px 0 14px; padding-inline: 20px; text-decoration: none; }
+.auth-card > small { color: var(--muted); line-height: 1.5; }
 
 .api-error-banner {
   max-width: 1408px;
