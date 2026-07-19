@@ -71,6 +71,17 @@ npm run dev
 
 If the frontend uses another origin, set `VC_BRAIN_ALLOWED_ORIGINS` for the API as a comma-separated list.
 
+### One-project Vercel deployment
+
+The root `vercel.json` deploys the Next.js frontend and FastAPI backend as
+services in one Vercel project. The backend remains private and Vercel injects
+its deployment-aware URL into the frontend as `VC_BRAIN_BACKEND_URL`.
+
+Set the Vercel project's Root Directory to the repository root, then configure
+`OPENAI_API_KEY` and `TAVILY_API_KEY` as sensitive Production and Preview
+environment variables. Do not create or manually set `VC_BRAIN_BACKEND_URL`;
+the service binding owns it.
+
 ## Scanner usage
 
 Run all scanners from the CLI:

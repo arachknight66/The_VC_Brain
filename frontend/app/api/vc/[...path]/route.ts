@@ -8,7 +8,17 @@ async function proxy(request: Request, context: RouteContext) {
 
   const { path } = await context.params;
   const incoming = new URL(request.url);
-  const base = (process.env.VC_BRAIN_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+  const configuredBase = process.env.VC_BRAIN_BACKEND_URL?.trim();
+  const base = (
+    configuredBase ||
+    (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : "")
+  ).replace(/\/$/, "");
+  if (!base) {
+    return Response.json(
+      { error: "Analysis service binding is unavailable" },
+      { status: 503 },
+    );
+  }
   const target = new URL(`${base}/${path.map(encodeURIComponent).join("/")}`);
   target.search = incoming.search;
 
