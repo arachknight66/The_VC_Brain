@@ -1,0 +1,9 @@
+fastapi>=0.110
+openai>=1.14
+tavily-python>=0.3
+python-dotenv>=1.0
+pydantic>=2.6
+rapidfuzz>=3.6
+pypdf>=4.0
+python-multipart>=0.0.9
+requests>=2.31

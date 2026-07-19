@@ -86,6 +86,7 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   const proxyRoute = await readFile(new URL("../app/api/vc/[...path]/route.ts", import.meta.url), "utf8");
   const database = await readFile(new URL("../db/index.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+  const vercel = JSON.parse(await readFile(new URL("../../vercel.json", import.meta.url), "utf8"));
   assert.match(page, /getAppUser/);
   assert.match(appAuth, /getGoogleUser/);
   assert.match(googleAuth, /createRemoteJWKSet/);
@@ -110,6 +111,11 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(workspaceRoute, /expectedVersion/);
   assert.match(workspaceRoute, /Workspace changed in another session/);
   assert.match(proxyRoute, /x-vc-brain-service-token/);
+  assert.match(proxyRoute, /VC_BRAIN_BACKEND_URL/);
+  assert.equal(vercel.services.frontend.framework, "nextjs");
+  assert.equal(vercel.services.backend.framework, "fastapi");
+  assert.equal(vercel.services.frontend.bindings[0].env, "VC_BRAIN_BACKEND_URL");
+  assert.equal(vercel.rewrites[0].destination.service, "frontend");
   assert.match(schema, /organizations/);
   assert.match(schema, /memberships/);
   assert.match(schema, /workspaceStates/);
