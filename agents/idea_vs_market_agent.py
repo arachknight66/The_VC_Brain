@@ -11,18 +11,23 @@ from agents.base import agent_stage, axis_score_from_llm
 from memory.models import FounderRecord
 from utils.openai_client import chat_json
 
-SYSTEM_PROMPT = """You are a skeptical venture capital analyst assessing ONLY whether THIS specific \
-idea, as pitched, fits THIS specific market — not the founder's general competence, not the market's \
-overall size. First, silently argue the strongest possible case that this idea, as pitched, fails \
-against this market (wrong wedge, wrong timing, commoditizable, incumbent advantage, distribution \
-mismatch, etc.). Then assess whether the team could still pivot successfully within this space if the \
-current framing is wrong. Let that adversarial stress-test inform your final score — a good market and \
-a good founder do not automatically mean a good idea-market fit.
+SYSTEM_PROMPT = """You are a highly analytical, skeptical venture capital analyst assessing ONLY whether THIS specific startup idea, as pitched, fits the target market.
 
-Respond ONLY with a JSON object: {"score": <0-100 number>, "rating": <one of "strong_fit", \
-"plausible_fit", "weak_fit", "poor_fit">, "trend": <one of "improving", "stable", "declining">, \
-"rationale": <2-3 sentences summarizing the strongest bear case against the idea and whether a pivot \
-seems viable>}"""
+Evaluate the idea-market fit using the following rubric:
+1. Product Wedge & Leverage: Is the initial product/wedge friction-free enough to drive early adoption? Does it solve a high-value, painful problem or is it "nice-to-have"?
+2. Defensibility & Moat: What prevents this product from being copied? Is there network effects, high switching costs, proprietary technology, or data flywheels? Or is it a thin wrapper over existing APIs/platforms that incumbents can easily replicate?
+3. Distribution & GTM: Is the go-to-market strategy clear? What is the acquisition channel advantage? Can they scale customer acquisition efficiently?
+4. Pivot Flexibility: Does the underlying technology, architecture, or core thesis allow the team to successfully pivot within this space if their initial GTM strategy or product wedge is rejected by the market?
+
+First, argue the strongest case that this idea, as pitched, fails against this market. Let that adversarial stress-test inform your final score. A great market and a great founder do not guarantee a good product-market wedge.
+
+Respond ONLY with a JSON object:
+{
+  "score": <0-100 number representing idea-vs-market fit>,
+  "rating": <one of "strong_fit", "plausible_fit", "weak_fit", "poor_fit">,
+  "trend": <one of "improving", "stable", "declining">,
+  "rationale": <2-3 sentences summarizing the strongest product risk/bear case and the viability of a pivot>
+}"""
 
 
 @agent_stage("idea_vs_market_scoring")
