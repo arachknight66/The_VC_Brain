@@ -60,8 +60,6 @@ any other inbound source — so an applicant runs through the identical Sourcing
 Diligence pipeline as every other lead. Per the no-collapsed-verdict design principle, the applicant
 only ever sees a submission confirmation; `founder_score`/memo/adversarial view stay investor-only in
 the main dashboard view.
-
-
 Run the Next.js frontend:
 
 ```powershell
