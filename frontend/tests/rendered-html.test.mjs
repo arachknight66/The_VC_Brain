@@ -102,7 +102,9 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(authCallback, /error_description/);
   assert.match(authCallback, /verifyGoogleIdToken/);
   assert.match(page, /Continue with Google/);
+  assert.match(page, /prefetch=\{false\}/);
   assert.match(await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8"), /Switch Google account/);
+  assert.match(await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8"), /prefetch=\{false\}/);
   assert.match(workspaceRoute, /Authentication required/);
   assert.match(workspaceRoute, /Viewer access is read-only/);
   assert.match(workspaceRoute, /expectedVersion/);
