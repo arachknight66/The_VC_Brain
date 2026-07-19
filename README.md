@@ -62,6 +62,16 @@ uvicorn api.main:app --reload
 streamlit run ui/dashboard.py
 ```
 
+This also serves the founder-facing application form as a second page (`ui/pages/1_Apply.py`,
+shown as "Apply" in the Streamlit sidebar) — the front door for anyone with no warm intro: a
+student, a first-time founder, an engineer applying cold. It accepts a pasted pitch or a PDF
+deck upload (extracted via `agents/sourcing_agent.py::extract_pdf_text_from_bytes`) plus optional
+GitHub/LinkedIn/Twitter/blog links, and posts to the same `POST /founders/inbound` endpoint used by
+any other inbound source — so an applicant runs through the identical Sourcing → Screening →
+Diligence pipeline as every other lead. Per the no-collapsed-verdict design principle, the applicant
+only ever sees a submission confirmation; `founder_score`/memo/adversarial view stay investor-only in
+the main dashboard view.
+
 Run tests:
 
 ```bash

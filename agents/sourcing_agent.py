@@ -57,6 +57,16 @@ def extract_pdf_text(pdf_path: str) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
+def extract_pdf_text_from_bytes(data: bytes) -> str:
+    """Same as extract_pdf_text, for an in-memory upload (e.g. a Streamlit file_uploader)."""
+    import io
+
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
 def load_from_synthetic(profile_path: str) -> FounderRecord:
     """Loads a synthetic founder profile JSON as if it were a scraped outbound signal."""
     with open(profile_path) as f:
