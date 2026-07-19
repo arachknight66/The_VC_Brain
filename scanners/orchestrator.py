@@ -34,6 +34,7 @@ def run_scanners(
     *,
     max_results: int = 10,
     store: SignalStore | None = None,
+    persist: bool = True,
 ) -> ScanRun:
     normalized_query = query.strip()
     if not normalized_query:
@@ -53,5 +54,6 @@ def run_scanners(
             signals.extend(found)
         except Exception as exc:  # one external source must not abort the scan run
             errors[source] = str(exc)
-    (store or SignalStore()).upsert_many(signals)
+    if persist:
+        (store or SignalStore()).upsert_many(signals)
     return ScanRun(normalized_query, requested, signals, errors)
