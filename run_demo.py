@@ -125,7 +125,10 @@ def main() -> None:
     live_signals = sourcing_agent.github_topic_search("fintech", max_results=3)
     if live_signals:
         for s in live_signals:
-            print(f"  {s['name']}: {s['description']}")
+            desc = s.get("description") or ""
+            name_safe = s["name"].encode("ascii", errors="ignore").decode("ascii")
+            desc_safe = desc.encode("ascii", errors="ignore").decode("ascii")
+            print(f"  {name_safe}: {desc_safe}")
     else:
         print("  (no live signals returned — GitHub API unreachable/rate-limited)")
 
