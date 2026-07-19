@@ -41,3 +41,28 @@ test("ships live scanner and pitch-upload API integrations", async () => {
   assert.match(page, /const MOCK_SIGNALS/);
   assert.match(page, /if \(USE_MOCK_DATA\)/);
 });
+
+test("serves deep-linkable workflow routes", async () => {
+  for (const path of ["/signals", "/intake", "/discovery", "/companies/example", "/diligence/example"]) {
+    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+    workerUrl.searchParams.set("route-test", `${path}-${Date.now()}`);
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    assert.equal(response.status, 200, `${path} should resolve`);
+  }
+});
+
+test("gates decision-ready language on evidence completeness", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /function getMemoReady/);
+  assert.match(page, /founder\.source_evidence\.length/);
+  assert.match(page, /founder\.trust_claims\.length/);
+  assert.match(page, /Claim extraction incomplete/);
+  assert.match(page, /Hold — evidence incomplete/);
+  assert.doesNotMatch(page, /No unresolved trust claims/);
+  assert.doesNotMatch(page, /Ask anything about your pipeline/);
+});

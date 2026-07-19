@@ -25,9 +25,11 @@ body {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { color: inherit; }
-button:focus-visible, input:focus-visible { outline: 3px solid rgba(9, 105, 232, .2); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(9, 105, 232, .28); outline-offset: 2px; }
+a { color: inherit; }
+.sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 
 .app-shell { min-height: 100vh; display: flex; }
 .sidebar {
@@ -462,4 +464,75 @@ h1 { letter-spacing: -.045em; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* Priority-zero interaction and readability baseline */
+.nav-item { height: auto; min-height: 44px; }
+.command-search { height: auto; min-height: 44px; font-size: 13px; }
+.icon-button { width: 44px; height: 44px; }
+.primary-button, .secondary-button, .select-button { min-height: 44px; font-size: 13px; text-decoration: none; }
+.select-button { padding: 0 12px; }
+.text-button { min-height: 44px; font-size: 13px; display: inline-flex; text-decoration: none; }
+.status-pill { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; display: inline-flex; align-items: center; color: #526078; background: #f8fafc; font-size: 12px; }
+.select-control { min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: white; display: inline-flex; align-items: center; gap: 5px; }
+.select-control select { min-height: 42px; border: 0; background: transparent; color: #526078; outline: 0; cursor: pointer; appearance: none; font-size: 13px; }
+.metric-card.loading strong, .metric-card.loading small { color: #737f90; }
+
+/* Decision integrity */
+.summary-tags span.warning { background: #fff5e8; color: #9d5b1f; }
+.summary-tags span.neutral { background: #f0f3f7; color: #516074; }
+.confidence-pill.warning { background: #fff5e8; color: #94561f; }
+.decision-summary { overflow: hidden; border-left: 4px solid #d4862f; }
+.decision-summary.advance { border-left-color: var(--green); }
+.decision-summary.blocked, .decision-summary.pass { border-left-color: #d2553b; }
+.decision-summary-head { padding: 20px; display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.decision-summary-head h2 { margin: 7px 0 5px; font-size: 23px; }
+.decision-summary-head p { margin: 0; color: var(--muted); }
+.decision-status { padding: 7px 10px; border-radius: 20px; background: #fff3e6; color: #8f521c; font-weight: 750; font-size: 12px; }
+.decision-status.advance { background: #e9f8f2; color: #267759; }
+.decision-status.blocked, .decision-status.pass { background: #fff0ed; color: #98412f; }
+.decision-columns { padding: 0 20px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.decision-columns h3 { margin: 0 0 9px; font-size: 13px; }
+.decision-columns p { margin: 7px 0; display: flex; align-items: flex-start; gap: 8px; color: #4f5e72; }
+.decision-columns svg { flex: none; margin-top: 2px; color: var(--blue); }
+.decision-summary.blocked .decision-columns > div:last-child svg, .decision-summary.pass .decision-columns > div:last-child svg { color: #b74d36; }
+.next-action { min-height: 52px; padding: 12px 20px; border-top: 1px solid var(--line); background: #f8fafc; display: flex; align-items: center; gap: 12px; }
+.next-action strong { flex: none; color: var(--blue); }
+.source-evidence-list { padding: 0 19px 19px; display: grid; gap: 8px; }
+.source-evidence-list a { min-height: 52px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.source-evidence-list a:hover { border-color: #b8cbe2; background: #f8fbff; }
+.source-evidence-list a > span { flex: 1; display: grid; gap: 3px; }
+.score-line > small { display: block; margin-top: 7px; color: #59687b; line-height: 1.45; }
+.watch-card p.unknown { color: #87491f; background: #fffaf3; }
+.watch-card p.unknown i { background: #d4862f; }
+.decision-card.blocked { border-color: #e7b3a5; }
+.memo-readiness { min-height: 44px; padding: 0 13px; border-radius: 8px; display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.memo-readiness.ready { color: #23795a; background: #e9f8f2; }
+.memo-readiness.blocked { color: #98412f; background: #fff0ed; }
+
+/* Live status and provenance */
+.api-status.checking { color: #596678; background: #f5f7fa; border-color: var(--line); }
+.api-status.checking i { background: #6f7b8d; }
+.api-status.unavailable { color: #98412f; background: #fff0ed; border-color: #e7b3a5; }
+.api-status.unavailable i { background: #c44d34; }
+.provenance-line { display: block; margin: 0 0 10px; color: #526074; }
+.empty-state.blocking { border-color: #dca696; background: #fff9f7; color: #98412f; padding: 28px; }
+
+/* Readability floor for decision-critical product content */
+.view p, .view small { font-size: 12px; line-height: 1.5; }
+.view button, .view input, .view select, .view a { font-size: 13px; }
+.view h2 { font-size: 15px; }
+.view .section-kicker, .view .eyebrow { font-size: 11px; }
+.view .claim-title span, .view .source-row, .view .signal-title span, .view .signal-title strong, .view .summary-tags span, .view .fit-pill, .view .confidence-pill, .view .evidence-chips span { font-size: 11px; }
+.form-grid input, .scanner-query input { min-height: 44px; font-size: 13px; }
+.source-selector button { min-height: 44px; font-size: 12px; }
+.dialog-content strong { font-size: 13px; }
+.dialog-content small, .dialog-content .eyebrow { font-size: 12px; }
+.dialog-content button { min-height: 52px; }
+.logo small, .user small { font-size: 11px; }
+.founder-copy small { white-space: normal; }
+
+@media (max-width: 620px) {
+  .decision-columns { grid-template-columns: 1fr; }
+  .decision-summary-head { flex-direction: column; }
 }
