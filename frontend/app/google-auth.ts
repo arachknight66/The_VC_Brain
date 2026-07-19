@@ -154,7 +154,7 @@ export function assertGoogleUserAllowed(email: string) {
     return;
   }
   throw new Error(
-    `The Google account ${normalized} is not approved for this workspace`,
+    `The Google account ${normalized} is not approved for The VC Brain`,
   );
 }
 

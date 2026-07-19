@@ -103,8 +103,9 @@ a { color: inherit; }
 .user > span:nth-child(2) { min-width: 0; display: grid; flex: 1; }
 .user strong { font-size: 11px; }
 .user small { color: #8a97aa; font-size: 9px; margin-top: 2px; }
-.signout-link { min-height: 36px; margin: 6px 6px 0; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #69778d; font-size: 11px; text-decoration: none; }
-.signout-link:hover { color: #9c402d; background: #fff4f1; }
+.account-actions { margin: 8px 6px 0; display: grid; grid-template-columns: 1fr; gap: 6px; }
+.account-link { min-height: 36px; border: 1px solid var(--line); border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #69778d; background: var(--surface-subtle); font-size: 11px; font-weight: 650; text-decoration: none; }
+.account-link:hover { color: var(--ink); background: #eef1ec; }
 .workspace { width: calc(100% - 236px); min-width: 0; margin-left: 236px; }
 .topbar {
   height: 65px;
@@ -1177,7 +1178,7 @@ html[data-theme="dark"] kbd {
 }
 
 html[data-theme="dark"] .nav-item,
-html[data-theme="dark"] .signout-link,
+html[data-theme="dark"] .account-link,
 html[data-theme="dark"] .icon-button,
 html[data-theme="dark"] .founder-copy small,
 html[data-theme="dark"] .company-line,

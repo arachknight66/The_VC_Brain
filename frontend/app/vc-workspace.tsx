@@ -279,7 +279,7 @@ function Sidebar({ view, onNavigate, open, onClose, inboxCount, diligenceCount, 
   return <>{open && <button className="scrim" aria-label="Close navigation" onClick={onClose} />}<aside className={`sidebar ${open ? "open" : ""}`}>
     <div className="sidebar-top"><Logo /><button className="icon-button sidebar-close" onClick={onClose} aria-label="Close navigation"><X size={18} /></button></div>
     <nav aria-label="Primary navigation"><p className="eyebrow">Investment workflow</p>{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => { onNavigate(id); onClose(); }}><Icon size={17} /><span>{label}</span>{id === "inbox" && inboxCount > 0 && <span className="nav-count neutral">{inboxCount}</span>}{id === "diligence" && diligenceCount > 0 && <span className="nav-count">{diligenceCount}</span>}</button>)}</nav>
-    <div className="sidebar-bottom"><div className="user"><span className="avatar blue small">{initials(user.displayName)}</span><span><strong>{user.displayName}</strong><small>{user.role ? `${labelize(user.role)} · ${user.organizationName || "Investment team"}` : user.email}</small></span></div><Link prefetch={false} className="signout-link" href="/api/auth/google/start?return_to=%2F">Switch Google account</Link><Link prefetch={false} className="signout-link" href="/api/auth/google/logout?return_to=%2F">Sign out</Link></div>
+    <div className="sidebar-bottom"><div className="user"><span className="avatar blue small">{initials(user.displayName)}</span><span><strong>{user.displayName}</strong><small>{user.email}</small></span></div><div className="account-actions"><Link prefetch={false} className="account-link" href="/api/auth/google/start?return_to=%2F">Switch Google account</Link><Link prefetch={false} className="account-link" href="/api/auth/google/logout">Sign out</Link></div></div>
   </aside></>;
 }
 
@@ -289,16 +289,16 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 }
 
 function Topbar({ view, onMenu, onQuickActions, online, syncStatus, user, theme, onToggleTheme }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean; syncStatus: SyncStatus; user: SessionUser; theme: ThemeMode; onToggleTheme: () => void }) {
-  const syncLabel = !online ? "Offline" : syncStatus === "saving" ? "Saving…" : syncStatus === "conflict" ? "Updated elsewhere" : syncStatus === "error" ? "Sync failed" : syncStatus === "loading" ? "Connecting…" : "Shared workspace saved";
+  const syncLabel = !online ? "Offline" : syncStatus === "saving" ? "Saving…" : syncStatus === "conflict" ? "Updated in another tab" : syncStatus === "error" ? "Sync failed" : syncStatus === "loading" ? "Connecting…" : "Account saved";
   return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="avatar blue small" title={user.email}>{initials(user.displayName)}</span></div></header>;
 }
 
 function LoadingWorkspace() {
-  return <div className="view loading-workspace" role="status" aria-live="polite"><span className="sr-only">Loading investment workspace</span><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /><div className="loading-grid"><div className="panel skeleton-panel" /><div className="panel skeleton-panel short" /></div></div>;
+  return <div className="view loading-workspace" role="status" aria-live="polite"><span className="sr-only">Loading account data</span><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /><div className="loading-grid"><div className="panel skeleton-panel" /><div className="panel skeleton-panel short" /></div></div>;
 }
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div className="api-error-banner" role="alert"><AlertTriangle size={18} /><div><strong>Workspace data is unavailable</strong><span>{message}</span></div><button className="secondary-button" onClick={onRetry}><RefreshCw size={14} /> Retry</button></div>;
+  return <div className="api-error-banner" role="alert"><AlertTriangle size={18} /><div><strong>Account data is unavailable</strong><span>{message}</span></div><button className="secondary-button" onClick={onRetry}><RefreshCw size={14} /> Retry</button></div>;
 }
 
 function ToastRegion({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string) => void }) {
@@ -693,26 +693,20 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
     const controller = new AbortController();
     fetch("/api/workspace", { signal: controller.signal }).then(async (response) => {
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Shared workspace unavailable");
+      if (!response.ok) throw new Error(data.error || "Account data unavailable");
       const serverWorkspace = normalizeWorkspace(data.workspace);
-      let legacyWorkspace: WorkspaceState | null = null;
-      try {
-        const saved = localStorage.getItem("vc-brain-workspace-v1");
-        if (data.version === 0 && saved) legacyWorkspace = normalizeWorkspace(JSON.parse(saved));
-      } catch { /* ignore malformed legacy cache */ }
       workspaceVersion.current = Number(data.version || 0);
       setSessionUser((current) => ({ ...current, role: data.user.role, organizationName: data.organization.name }));
-      const initialWorkspace = legacyWorkspace ?? serverWorkspace;
       lastSavedWorkspace.current = JSON.stringify(serverWorkspace);
-      skipNextSave.current = !legacyWorkspace;
+      skipNextSave.current = true;
       workspaceReady.current = true;
-      setWorkspace(initialWorkspace);
-      setSyncStatus(legacyWorkspace ? "saving" : "saved");
+      setWorkspace(serverWorkspace);
+      setSyncStatus("saved");
       setWorkspaceError("");
     }).catch((reason) => {
       if (reason.name !== "AbortError") {
         setSyncStatus("error");
-        setWorkspaceError(`Shared workspace unavailable: ${reason.message}`);
+        setWorkspaceError(`Account data unavailable: ${reason.message}`);
       }
     });
     return () => controller.abort();
@@ -725,7 +719,7 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
     const timeout = window.setTimeout(async () => {
       setSyncStatus("saving");
       try {
-        const response = await fetch("/api/workspace", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace, expectedVersion: workspaceVersion.current, action: "updated shared investment workspace" }) });
+        const response = await fetch("/api/workspace", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspace, expectedVersion: workspaceVersion.current, action: "updated private account data" }) });
         const data = await response.json();
         if (response.status === 409) {
           const current = normalizeWorkspace(data.workspace);
@@ -734,13 +728,12 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
           skipNextSave.current = true;
           setWorkspace(current);
           setSyncStatus("conflict");
-          notify("Another teammate saved first. Their latest workspace has been loaded.", "warning");
+          notify("This account changed in another tab. The latest data has been loaded.", "warning");
           return;
         }
         if (!response.ok) throw new Error(data.error || "Workspace sync failed");
         workspaceVersion.current = Number(data.version || workspaceVersion.current + 1);
         lastSavedWorkspace.current = serialized;
-        localStorage.removeItem("vc-brain-workspace-v1");
         setSyncStatus("saved");
       } catch (reason) {
         setSyncStatus("error");
