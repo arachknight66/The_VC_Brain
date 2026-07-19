@@ -108,3 +108,19 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(database, /drizzle-orm\/postgres-js/);
   assert.match(database, /DATABASE_URL/);
 });
+
+test("ships the multi-reasoning investor chat box", async () => {
+  const page = await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8");
+  assert.match(page, /function InvestorChat/);
+  assert.match(page, /\/investor-briefing/);
+  assert.match(page, /\/founders\/\$\{founder\.founder_id\}\/chat/);
+  assert.match(page, /chat-fab/);
+  assert.match(page, /Reading the evidence|Weighing the upside|Weighing the risks/);
+  assert.match(page, /not an investment recommendation/i);
+  assert.match(page, /<InvestorChat/);
+
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.chat-fab/);
+  assert.match(css, /\.chat-panel/);
+  assert.match(css, /\.typing-dots/);
+});
