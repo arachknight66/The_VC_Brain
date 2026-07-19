@@ -115,6 +115,58 @@ def list_signals(
     }
 
 
+@router.get("/dashboard/summary")
+def get_dashboard_summary() -> dict:
+    """Return investor-facing metrics derived from persisted workflow records."""
+    founders = _store.list_all()
+    total = len(founders)
+    memo_ready = sum(1 for record in founders if bool(record.memo))
+    high_confidence = sum(1 for record in founders if record.founder_score.confidence >= 0.75)
+    verified_builds = sum(
+        1 for record in founders if record.build_evidence.tier == "verified_working"
+    )
+    verified_claims = sum(
+        1
+        for record in founders
+        for claim in record.trust_claims
+        if claim.evidence_category == "known_verified" and not claim.contradiction_flag
+    )
+    unverified_claims = sum(
+        1
+        for record in founders
+        for claim in record.trust_claims
+        if claim.evidence_category == "unverifiable" or claim.contradiction_flag
+    )
+    memo_times = [
+        record.timing.elapsed_seconds
+        for record in founders
+        if record.timing.elapsed_seconds is not None
+    ]
+    return {
+        "founder_records": total,
+        "active_opportunities": sum(1 for record in founders if not record.screened_out),
+        "raw_signals": sum(_signal_store.count_by_source().values()),
+        "memo_ready": memo_ready,
+        "high_confidence_scores": high_confidence,
+        "verified_builds": verified_builds,
+        "verified_claims": verified_claims,
+        "unverified_claims": unverified_claims,
+        "average_founder_score": round(
+            sum(record.founder_score.value for record in founders) / total, 1
+        )
+        if total
+        else 0.0,
+        "average_score_confidence": round(
+            sum(record.founder_score.confidence for record in founders) / total, 2
+        )
+        if total
+        else 0.0,
+        "average_signal_to_memo_seconds": round(sum(memo_times) / len(memo_times), 2)
+        if memo_times
+        else None,
+    }
+
+
 @router.get("/founders")
 def list_founders() -> list[dict]:
     return [r.to_dict() for r in _store.list_all()]

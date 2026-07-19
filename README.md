@@ -101,6 +101,23 @@ Content-Type: application/json
 
 Retrieve persisted signals with `GET /signals`, or filter with `GET /signals?source=github&limit=25`.
 
+## Frontend metric contract
+
+The Next.js dashboard reads persisted data from `GET /founders`, `GET /signals`, and
+`GET /dashboard/summary`. Frontend terminology mirrors the backend contract:
+
+- **Founder Score** is the persistent weighted ranking metric.
+- **Founder Axis**, **Market Axis**, and **Idea-vs-Market Axis** remain independently visible.
+- **Score Confidence** is `founder_score.confidence`; it is not another score.
+- **Trust Claim Confidence** is calculated from claim-level confidence values.
+- **Build Evidence** uses the backend tiers `verified_working`, `verified_submitted`,
+  `unverifiable`, and `not_applicable`.
+- **Raw Signals** are unconfirmed Stage 0 scanner results.
+- **Signal → Memo** is the measured pipeline elapsed time.
+
+Dashboard, Founder Discovery, Company Analysis, and Trust Claim Verification all use API records;
+they do not maintain a separate set of mock portfolio metrics.
+
 ## Pitch upload
 
 `POST /founders/inbound/upload` accepts multipart form data:

@@ -27,6 +27,10 @@ test("ships live scanner and pitch-upload API integrations", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /\/scanners\/run/);
   assert.match(page, /\/founders\/inbound\/upload/);
+  assert.match(page, /\/dashboard\/summary/);
+  assert.match(page, /Founder Axis/);
+  assert.match(page, /Idea-vs-Market Axis/);
+  assert.match(page, /Trust Claim Confidence/);
   assert.match(page, /GitHub/);
   assert.match(page, /Substack/);
   assert.match(page, /Devpost/);
