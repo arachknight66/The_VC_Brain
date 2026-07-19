@@ -36,6 +36,7 @@ import {
   Target,
   TrendingUp,
   Upload,
+  UserRound,
   Wifi,
   WifiOff,
   X,
@@ -283,10 +284,27 @@ function Avatar({ founder, small = false }: { founder: FounderRecord; small?: bo
 }
 
 function Sidebar({ view, onNavigate, open, onClose, inboxCount, diligenceCount, user }: { view: View; onNavigate: (view: View) => void; open: boolean; onClose: () => void; inboxCount: number; diligenceCount: number; user: SessionUser }) {
+  const role = labelize(user.role ?? "member");
+  const organization = user.organizationName || "Personal workspace";
   return <>{open && <button className="scrim" aria-label="Close navigation" onClick={onClose} />}<aside className={`sidebar ${open ? "open" : ""}`}>
     <div className="sidebar-top"><Logo /><button className="icon-button sidebar-close" onClick={onClose} aria-label="Close navigation"><X size={18} /></button></div>
     <nav aria-label="Primary navigation"><p className="eyebrow">Investment workflow</p>{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => { onNavigate(id); onClose(); }}><Icon size={17} /><span>{label}</span>{id === "inbox" && inboxCount > 0 && <span className="nav-count neutral">{inboxCount}</span>}{id === "diligence" && diligenceCount > 0 && <span className="nav-count">{diligenceCount}</span>}</button>)}</nav>
-    <div className="sidebar-bottom"><div className="user"><span className="avatar blue small">{initials(user.displayName)}</span><span><strong>{user.displayName}</strong><small>{user.email}</small></span></div><div className="account-actions"><Link prefetch={false} className="account-link" href="/api/auth/google/logout">Switch account or sign out</Link></div></div>
+    <div className="sidebar-bottom">
+      <section className="profile-card" aria-label="Profile">
+        <div className="profile-card-head">
+          <span className="avatar blue">{initials(user.displayName)}</span>
+          <span>
+            <strong>{user.displayName}</strong>
+            <small>{user.email}</small>
+          </span>
+        </div>
+        <div className="profile-meta">
+          <span><BriefcaseBusiness size={13} />{organization}</span>
+          <span><UserRound size={13} />{role}</span>
+        </div>
+        <Link prefetch={false} className="account-link" href="/api/auth/google/logout">Switch account or sign out</Link>
+      </section>
+    </div>
   </aside></>;
 }
 
@@ -297,7 +315,7 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 
 function Topbar({ view, onMenu, onQuickActions, online, syncStatus, user, theme, onToggleTheme }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean; syncStatus: SyncStatus; user: SessionUser; theme: ThemeMode; onToggleTheme: () => void }) {
   const syncLabel = !online ? "Offline" : syncStatus === "saving" ? "Saving…" : syncStatus === "conflict" ? "Updated in another tab" : syncStatus === "error" ? "Sync failed" : syncStatus === "loading" ? "Connecting…" : "Account saved";
-  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="avatar blue small" title={user.email}>{initials(user.displayName)}</span></div></header>;
+  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Search or jump to...</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="top-profile" title={user.email}><span className="avatar blue small">{initials(user.displayName)}</span><span>{user.displayName}</span></span></div></header>;
 }
 
 function LoadingWorkspace() {
