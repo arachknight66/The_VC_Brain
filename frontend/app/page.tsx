@@ -3,7 +3,6 @@
 import {
   Activity,
   ArrowRight,
-  BarChart3,
   Bell,
   BookOpen,
   Bot,
@@ -16,6 +15,7 @@ import {
   FileText,
   Github,
   Globe2,
+  Linkedin,
   LayoutDashboard,
   Lightbulb,
   Menu,
@@ -27,24 +27,213 @@ import {
   Target,
   TrendingUp,
   Users,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-type View = "dashboard" | "discovery" | "company" | "diligence";
+type View = "dashboard" | "scanner" | "intake" | "discovery" | "company" | "diligence";
 
-const founders = [
-  { name: "Priya Nandakumar", company: "Ridgeline", role: "Developer tools", score: 92, stage: "Seed", initials: "PN", tone: "indigo", signal: "+8 this week" },
-  { name: "Marcus Ihediwa", company: "Ledgerly", role: "Embedded finance", score: 84, stage: "Pre-seed", initials: "MI", tone: "orange", signal: "+5 this week" },
-  { name: "Alina Moroz", company: "NeuroStream", role: "Healthcare AI", score: 88, stage: "Series A", initials: "AM", tone: "cyan", signal: "+12 this week" },
-  { name: "Julian Vance", company: "Conduit Labs", role: "Climate infrastructure", score: 79, stage: "Seed", initials: "JV", tone: "violet", signal: "+4 this week" },
-  { name: "Sana Jenkins", company: "Fieldnote", role: "Vertical SaaS", score: 76, stage: "Pre-seed", initials: "SJ", tone: "green", signal: "+7 this week" },
-  { name: "Leo Chen", company: "Onward Robotics", role: "Robotics", score: 81, stage: "Seed", initials: "LC", tone: "blue", signal: "+6 this week" },
+type Signal = {
+  signal_id: string;
+  source: string;
+  title: string;
+  source_url: string;
+  summary: string;
+  score: number;
+  observed_at: string;
+};
+
+type AxisScore = {
+  rating: string;
+  score: number;
+  trend: string;
+  rationale: string;
+};
+
+type TrustClaim = {
+  claim_text: string;
+  confidence: number;
+  evidence_category: "known_verified" | "statistical_association" | "unverifiable";
+  source: string | null;
+  contradiction_flag: boolean;
+};
+
+type FounderRecord = {
+  founder_id: string;
+  name: string;
+  company_name: string;
+  source_channel: string;
+  screened_out: boolean;
+  screened_out_reason: string | null;
+  entity_resolution_confidence: number | null;
+  raw_inputs: Record<string, string | boolean | null | string[]>;
+  founder_score: {
+    value: number;
+    trend: "improving" | "stable" | "declining";
+    confidence: number;
+    confidence_basis: string | null;
+    history: Array<{ timestamp: string; value: number; context: string }>;
+  };
+  axis_scores: Record<string, AxisScore>;
+  build_evidence: {
+    tier: "verified_working" | "verified_submitted" | "unverifiable" | "not_applicable";
+    signals_checked: string[];
+    evidence_log: Array<{ signal: string; found: boolean; detail: string; source_url: string | null }>;
+  };
+  trust_claims: TrustClaim[];
+  source_evidence: Array<{ source: string; title: string; url: string; confidence: number }>;
+  memo: Record<string, unknown>;
+  adversarial_view: Record<string, unknown>;
+  timing: { elapsed_seconds: number | null; memo_ready_at: string | null; stage_timings: Record<string, number> };
+};
+
+type DashboardSummary = {
+  founder_records: number;
+  active_opportunities: number;
+  raw_signals: number;
+  memo_ready: number;
+  high_confidence_scores: number;
+  verified_builds: number;
+  verified_claims: number;
+  unverified_claims: number;
+  average_founder_score: number;
+  average_score_confidence: number;
+  average_signal_to_memo_seconds: number | null;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_VC_BRAIN_API_URL ?? "http://localhost:8000";
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
+const EMPTY_SUMMARY: DashboardSummary = {
+  founder_records: 0,
+  active_opportunities: 0,
+  raw_signals: 0,
+  memo_ready: 0,
+  high_confidence_scores: 0,
+  verified_builds: 0,
+  verified_claims: 0,
+  unverified_claims: 0,
+  average_founder_score: 0,
+  average_score_confidence: 0,
+  average_signal_to_memo_seconds: null,
+};
+
+function createMockFounder({
+  id,
+  name,
+  company,
+  sector,
+  stage,
+  score,
+  confidence,
+  trend,
+}: {
+  id: string;
+  name: string;
+  company: string;
+  sector: string;
+  stage: string;
+  score: number;
+  confidence: number;
+  trend: "improving" | "stable" | "declining";
+}): FounderRecord {
+  return {
+    founder_id: id,
+    name,
+    company_name: company,
+    source_channel: "inbound",
+    screened_out: false,
+    screened_out_reason: null,
+    entity_resolution_confidence: confidence,
+    raw_inputs: { sector, stage, geography: "United States" },
+    founder_score: {
+      value: score,
+      trend,
+      confidence,
+      confidence_basis: "mock_demo_fixture",
+      history: [{ timestamp: "2026-07-14T12:00:00Z", value: score - 4, context: "mock_previous_run" }],
+    },
+    axis_scores: {
+      founder: { rating: "strong", score: Math.min(100, score + 4), trend, rationale: `${name} shows strong founder-axis evidence in the retained demo fixture.` },
+      market: { rating: "bullish", score: Math.max(0, score - 5), trend: "stable", rationale: `${sector} has favorable market signals in the retained demo fixture.` },
+      idea_vs_market: { rating: "resilient", score: Math.max(0, score - 1), trend, rationale: "The idea-vs-market assessment remains resilient under the demo assumptions." },
+    },
+    build_evidence: {
+      tier: "verified_working",
+      signals_checked: ["GitHub repository", "Live product URL"],
+      evidence_log: [{ signal: "Live product URL", found: true, detail: "Demo fixture represents a reachable product.", source_url: "https://example.com" }],
+    },
+    trust_claims: [
+      { claim_text: "Product usage is growing", confidence: 0.9, evidence_category: "known_verified", source: "Mock product analytics", contradiction_flag: false },
+      { claim_text: "Enterprise expansion is repeatable", confidence: 0.62, evidence_category: "statistical_association", source: "Mock customer evidence", contradiction_flag: false },
+    ],
+    source_evidence: [{ source: "linkedin", title: `${name} public profile`, url: "https://www.linkedin.com", confidence: 0.9 }],
+    memo: {
+      company_snapshot: `${company} is a retained demo company in ${sector}, shown only when the mock-data feature flag is enabled.`,
+      investment_hypotheses: ["Founder experience maps to the stated problem.", "Public build evidence supports execution velocity."],
+    },
+    adversarial_view: { bear_case_summary: "The retained mock case still requires customer and market validation." },
+    timing: { elapsed_seconds: 14.2, memo_ready_at: "2026-07-14T12:00:14Z", stage_timings: { entity_resolution: 0.4, scoring: 8.1, memo: 5.7 } },
+  };
+}
+
+// Retained demo fixtures. They are intentionally disabled unless
+// NEXT_PUBLIC_USE_MOCK_DATA=true is supplied at build/runtime startup.
+const MOCK_FOUNDERS: FounderRecord[] = [
+  createMockFounder({ id: "mock-priya", name: "Priya Nandakumar", company: "Ridgeline", sector: "Developer tools", stage: "Seed", score: 92, confidence: 0.92, trend: "improving" }),
+  createMockFounder({ id: "mock-marcus", name: "Marcus Ihediwa", company: "Ledgerly", sector: "Embedded finance", stage: "Pre-seed", score: 84, confidence: 0.81, trend: "improving" }),
+  createMockFounder({ id: "mock-alina", name: "Alina Moroz", company: "NeuroStream", sector: "Healthcare AI", stage: "Series A", score: 88, confidence: 0.87, trend: "improving" }),
+  createMockFounder({ id: "mock-julian", name: "Julian Vance", company: "Conduit Labs", sector: "Climate infrastructure", stage: "Seed", score: 79, confidence: 0.76, trend: "stable" }),
+  createMockFounder({ id: "mock-sana", name: "Sana Jenkins", company: "Fieldnote", sector: "Vertical SaaS", stage: "Pre-seed", score: 76, confidence: 0.73, trend: "improving" }),
+  createMockFounder({ id: "mock-leo", name: "Leo Chen", company: "Onward Robotics", sector: "Robotics", stage: "Seed", score: 81, confidence: 0.79, trend: "stable" }),
 ];
+
+const MOCK_SIGNALS: Signal[] = [
+  { signal_id: "mock-signal-github", source: "github", title: "Ridgeline shipped 3 releases", source_url: "https://github.com", summary: "Repository activity increased in the retained demo fixture.", score: 88, observed_at: "2026-07-14T12:00:00Z" },
+  { signal_id: "mock-signal-linkedin", source: "linkedin", title: "NeuroStream expanded its ML team", source_url: "https://www.linkedin.com", summary: "Public hiring evidence is represented by this disabled demo signal.", score: 82, observed_at: "2026-07-14T11:00:00Z" },
+  { signal_id: "mock-signal-devpost", source: "devpost", title: "Conduit Labs demo submission found", source_url: "https://devpost.com", summary: "A public build submission is represented by this disabled demo signal.", score: 77, observed_at: "2026-07-14T10:00:00Z" },
+  { signal_id: "mock-signal-substack", source: "substack", title: "Fieldnote founder published a market thesis", source_url: "https://substack.com", summary: "A founder-authored public research signal is retained for demos.", score: 71, observed_at: "2026-07-14T09:00:00Z" },
+];
+
+const MOCK_SUMMARY: DashboardSummary = {
+  founder_records: MOCK_FOUNDERS.length,
+  active_opportunities: MOCK_FOUNDERS.length,
+  raw_signals: MOCK_SIGNALS.length,
+  memo_ready: MOCK_FOUNDERS.length,
+  high_confidence_scores: MOCK_FOUNDERS.filter((founder) => founder.founder_score.confidence >= 0.75).length,
+  verified_builds: MOCK_FOUNDERS.filter((founder) => founder.build_evidence.tier === "verified_working").length,
+  verified_claims: MOCK_FOUNDERS.reduce((total, founder) => total + founder.trust_claims.filter((claim) => claim.evidence_category === "known_verified").length, 0),
+  unverified_claims: 0,
+  average_founder_score: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.value, 0) / MOCK_FOUNDERS.length * 10) / 10,
+  average_score_confidence: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.confidence, 0) / MOCK_FOUNDERS.length * 100) / 100,
+  average_signal_to_memo_seconds: 14.2,
+};
+
+const avatarTones = ["indigo", "orange", "cyan", "violet", "green", "blue"];
+
+function founderInitials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "VC";
+}
+
+function founderTone(founder: FounderRecord) {
+  const hash = [...founder.founder_id].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return avatarTones[hash % avatarTones.length];
+}
+
+function formatMetric(value: number | null, suffix = "") {
+  return value === null ? "—" : `${Number.isInteger(value) ? value : value.toFixed(1)}${suffix}`;
+}
+
+function labelize(value: string | null | undefined) {
+  return value ? value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "Not available";
+}
 
 const navItems = [
   { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard },
+  { id: "scanner" as View, label: "Signal Scanner", icon: Zap },
+  { id: "intake" as View, label: "Pitch Intake", icon: Upload },
   { id: "discovery" as View, label: "Discovery", icon: Search },
   { id: "company" as View, label: "Companies", icon: BriefcaseBusiness },
   { id: "diligence" as View, label: "Diligence", icon: ShieldCheck },
@@ -52,6 +241,8 @@ const navItems = [
 
 const viewTitles: Record<View, string> = {
   dashboard: "Intelligence Overview",
+  scanner: "Signal Scanner",
+  intake: "Pitch Intake",
   discovery: "Founder Discovery",
   company: "Company Intelligence",
   diligence: "Diligence Workspace",
@@ -66,11 +257,11 @@ function Logo() {
   );
 }
 
-function Avatar({ founder, small = false }: { founder: (typeof founders)[number]; small?: boolean }) {
-  return <span className={`avatar ${founder.tone} ${small ? "small" : ""}`}>{founder.initials}</span>;
+function Avatar({ founder, small = false }: { founder: FounderRecord; small?: boolean }) {
+  return <span className={`avatar ${founderTone(founder)} ${small ? "small" : ""}`}>{founderInitials(founder.name)}</span>;
 }
 
-function Sidebar({ view, onView, open, onClose }: { view: View; onView: (view: View) => void; open: boolean; onClose: () => void }) {
+function Sidebar({ view, onView, open, onClose, reviewCount }: { view: View; onView: (view: View) => void; open: boolean; onClose: () => void; reviewCount: number }) {
   return (
     <>
       {open && <button className="scrim" aria-label="Close navigation" onClick={onClose} />}
@@ -88,7 +279,7 @@ function Sidebar({ view, onView, open, onClose }: { view: View; onView: (view: V
               onClick={() => { onView(id); onClose(); }}
             >
               <Icon size={17} strokeWidth={1.9} /><span>{label}</span>
-              {id === "diligence" && <span className="nav-count">3</span>}
+              {id === "diligence" && reviewCount > 0 && <span className="nav-count">{reviewCount}</span>}
             </button>
           ))}
           <p className="eyebrow nav-section">Library</p>
@@ -139,105 +330,124 @@ function MetricCard({ icon: Icon, label, value, meta, tone }: { icon: typeof Act
   );
 }
 
-function Dashboard({ onView }: { onView: (view: View) => void }) {
-  const bars = [28, 46, 38, 62, 50, 76, 66, 84, 72, 91, 78, 96];
+function Dashboard({
+  onView,
+  onFounder,
+  founders,
+  signals,
+  summary,
+  loading,
+  error,
+}: {
+  onView: (view: View) => void;
+  onFounder: (founderId: string) => void;
+  founders: FounderRecord[];
+  signals: Signal[];
+  summary: DashboardSummary;
+  loading: boolean;
+  error: string;
+}) {
+  const bars = founders.length ? founders.slice(0, 12).map((founder) => Math.max(8, founder.founder_score.value)) : [8, 8, 8, 8];
+  const sectors = Object.entries(founders.reduce<Record<string, number>>((counts, founder) => {
+    const sector = String(founder.raw_inputs.sector || "Unclassified");
+    counts[sector] = (counts[sector] || 0) + 1;
+    return counts;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 4);
   return (
     <div className="view dashboard-view">
       <section className="hero-row">
         <div>
-          <span className="section-kicker"><Sparkles size={14} /> Monday briefing</span>
+          <span className="section-kicker"><Sparkles size={14} /> Persisted intelligence</span>
           <h1>Good morning, Arjun.</h1>
-          <p>Your pipeline gained <strong>14 high-confidence signals</strong> since Friday.</p>
+          <p>Your pipeline contains <strong>{summary.active_opportunities} active opportunities</strong> and {summary.raw_signals} raw sourcing signals.</p>
         </div>
         <div className="hero-actions">
-          <button className="secondary-button"><Plus size={16} /> Add company</button>
-          <button className="primary-button" onClick={() => onView("discovery")}><Search size={16} /> Discover founders</button>
+          <button className="secondary-button" onClick={() => onView("intake")}><Plus size={16} /> Add company</button>
+          <button className="primary-button" onClick={() => onView("scanner")}><Search size={16} /> Scan live signals</button>
         </div>
       </section>
 
-      <section className="metrics-grid" aria-label="Portfolio metrics">
-        <MetricCard icon={Users} label="Founders tracked" value="248" meta="+18 this month" tone="blue" />
-        <MetricCard icon={Zap} label="New signals" value="42" meta="+14 since Friday" tone="violet" />
-        <MetricCard icon={ShieldCheck} label="In diligence" value="12" meta="3 need review" tone="green" />
-        <MetricCard icon={FileCheck2} label="Memos ready" value="8" meta="2 awaiting notes" tone="orange" />
+      <section className="metrics-grid" aria-label="Workflow metrics">
+        <MetricCard icon={Users} label="Founder records" value={String(summary.founder_records)} meta={`${summary.active_opportunities} active opportunities`} tone="blue" />
+        <MetricCard icon={Zap} label="Raw signals" value={String(summary.raw_signals)} meta="Persisted Stage 0 evidence" tone="violet" />
+        <MetricCard icon={ShieldCheck} label="High-confidence scores" value={String(summary.high_confidence_scores)} meta={`Average confidence ${Math.round(summary.average_score_confidence * 100)}%`} tone="green" />
+        <MetricCard icon={FileCheck2} label="Memo ready" value={String(summary.memo_ready)} meta={`${summary.unverified_claims} unverified claims`} tone="orange" />
       </section>
+      {error && <p className="workflow-error">{error}</p>}
 
       <section className="dashboard-grid">
         <article className="panel recent-panel">
           <div className="panel-heading">
-            <div><h2>Recent analysis</h2><p>Highest-momentum opportunities</p></div>
+            <div><h2>Ranked opportunities</h2><p>Ordered by persistent Founder Score</p></div>
             <button className="text-button" onClick={() => onView("discovery")}>View all <ArrowRight size={14} /></button>
           </div>
           <div className="analysis-list">
             {founders.slice(0, 4).map((founder) => (
-              <button className="analysis-row" key={founder.company} onClick={() => onView("company")}>
+              <button className="analysis-row" key={founder.founder_id} onClick={() => onFounder(founder.founder_id)}>
                 <Avatar founder={founder} />
-                <span className="founder-copy"><strong>{founder.company}</strong><small>{founder.name} · {founder.role}</small></span>
-                <span className="signal-tag">{founder.signal}</span>
-                <span className="score-badge"><strong>{founder.score}</strong><small>/100</small></span>
+                <span className="founder-copy"><strong>{founder.company_name}</strong><small>{founder.name} · {labelize(String(founder.raw_inputs.sector || founder.source_channel))}</small></span>
+                <span className="signal-tag">{labelize(founder.founder_score.trend)}</span>
+                <span className="score-badge"><strong>{Math.round(founder.founder_score.value)}</strong><small>/100</small></span>
                 <ArrowRight size={15} />
               </button>
             ))}
+            {!founders.length && <div className="inline-empty">{loading ? "Loading founder records…" : "No founder records have been persisted yet."}</div>}
           </div>
         </article>
 
         <article className="panel feed-panel">
           <div className="panel-heading">
-            <div><h2>Live signal feed</h2><p>Evidence from your monitored network</p></div>
-            <span className="live-dot">Live</span>
+            <div><h2>Raw signal feed</h2><p>Unconfirmed, source-attributed scanner results</p></div>
+            <span className="live-dot">{signals.length} stored</span>
           </div>
           <div className="feed-list">
-            <div className="feed-item"><span className="feed-icon github"><Github size={15} /></span><div><strong>Ridgeline shipped 3 releases</strong><p>Repository velocity is up 42% week over week.</p><small>12 min ago</small></div></div>
-            <div className="feed-item"><span className="feed-icon funding"><TrendingUp size={15} /></span><div><strong>NeuroStream updated hiring</strong><p>Added 4 senior ML infrastructure roles.</p><small>43 min ago</small></div></div>
-            <div className="feed-item"><span className="feed-icon web"><Globe2 size={15} /></span><div><strong>Ledgerly traction verified</strong><p>Three design partners confirmed via public sources.</p><small>2 hr ago</small></div></div>
-            <div className="feed-item"><span className="feed-icon people"><Users size={15} /></span><div><strong>Warm path found</strong><p>Maya Patel can introduce you to Julian Vance.</p><small>4 hr ago</small></div></div>
+            {signals.slice(0, 4).map((signal) => (
+              <div className="feed-item" key={signal.signal_id}><span className={`feed-icon ${signal.source === "github" ? "github" : "web"}`}>{signal.source === "github" ? <Github size={15} /> : <Globe2 size={15} />}</span><div><strong>{signal.title}</strong><p>{signal.summary || "No public excerpt was returned."}</p><small>{labelize(signal.source)} · score {Math.round(signal.score)}</small></div></div>
+            ))}
+            {!signals.length && <div className="inline-empty">Run the Signal Scanner to persist raw sourcing evidence.</div>}
           </div>
         </article>
 
         <article className="panel momentum-panel">
           <div className="panel-heading">
-            <div><h2>Pipeline momentum</h2><p>Signal volume across the last 12 weeks</p></div>
-            <button className="select-button">Last 12 weeks <ChevronDown size={14} /></button>
+            <div><h2>Score distribution</h2><p>Founder Score across ranked opportunities</p></div>
+            <button className="select-button">Persisted records <ChevronDown size={14} /></button>
           </div>
           <div className="chart-summary">
-            <div><strong>387</strong><span>Total signals</span></div>
-            <div><strong>74%</strong><span>High confidence</span></div>
-            <div><strong>2.4×</strong><span>Faster to memo</span></div>
+            <div><strong>{summary.raw_signals}</strong><span>Raw signals</span></div>
+            <div><strong>{formatMetric(summary.average_founder_score)}</strong><span>Average Founder Score</span></div>
+            <div><strong>{formatMetric(summary.average_signal_to_memo_seconds, "s")}</strong><span>Average signal → memo</span></div>
           </div>
           <div className="bar-chart" aria-label="Increasing signal volume">
             {bars.map((height, index) => <span key={index} style={{ height: `${height}%` }}><i /></span>)}
           </div>
-          <div className="chart-axis"><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span></div>
+          <div className="chart-axis"><span>Highest</span><span>Ranked by score</span><span>Lowest</span></div>
         </article>
 
         <article className="panel thesis-panel">
-          <div className="panel-heading"><div><h2>Thesis radar</h2><p>Where momentum is building</p></div></div>
-          {[
-            ["AI infrastructure", 88, "+12%"],
-            ["Developer tools", 76, "+8%"],
-            ["Vertical SaaS", 64, "+4%"],
-            ["Climate software", 52, "+7%"],
-          ].map(([label, value, growth]) => (
+          <div className="panel-heading"><div><h2>Sector coverage</h2><p>Founder records by declared sector</p></div></div>
+          {sectors.map(([label, count]) => (
             <div className="thesis-row" key={label}>
-              <div><strong>{label}</strong><span>{growth}</span></div>
-              <div className="progress"><i style={{ width: `${value}%` }} /></div>
+              <div><strong>{label}</strong><span>{count} record{count === 1 ? "" : "s"}</span></div>
+              <div className="progress"><i style={{ width: `${Math.max(10, (count / Math.max(1, founders.length)) * 100)}%` }} /></div>
             </div>
           ))}
+          {!sectors.length && <div className="inline-empty">Sector coverage appears after founder intake.</div>}
         </article>
       </section>
     </div>
   );
 }
 
-function Discovery({ onCompany }: { onCompany: () => void }) {
+function Discovery({ founders, onCompany }: { founders: FounderRecord[]; onCompany: (founderId: string) => void }) {
   const [query, setQuery] = useState("");
-  const filtered = useMemo(() => founders.filter((founder) => `${founder.name} ${founder.company} ${founder.role}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  const filtered = useMemo(() => founders.filter((founder) => `${founder.name} ${founder.company_name} ${String(founder.raw_inputs.sector || "")}`.toLowerCase().includes(query.toLowerCase())), [founders, query]);
   return (
     <div className="view discovery-view">
       <section className="discovery-hero">
         <span className="section-kicker"><Target size={14} /> Founder discovery</span>
         <h1>Discover your next big founder.</h1>
-        <p>Ask The VC Brain to find exceptional founders matching your investment thesis.</p>
+        <p>Search persisted founder records ranked by Founder Score and evidence confidence.</p>
         <label className="big-search">
           <Search size={19} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try “AI infrastructure founders at Seed in the US”" />
@@ -248,20 +458,21 @@ function Discovery({ onCompany }: { onCompany: () => void }) {
         </div>
       </section>
       <div className="results-bar">
-        <div><strong>{filtered.length} high-fit founders</strong><span> ranked by thesis fit and evidence quality</span></div>
+        <div><strong>{filtered.length} founder records</strong><span> ranked by Founder Score</span></div>
         <div className="filter-actions"><button className="select-button">Stage <ChevronDown size={14} /></button><button className="select-button">Sector <ChevronDown size={14} /></button><button className="select-button">Sort: Best fit <ChevronDown size={14} /></button></div>
       </div>
       <section className="founder-grid">
-        {filtered.map((founder, index) => (
-          <article className="founder-card" key={founder.company}>
-            <div className="founder-card-top"><Avatar founder={founder} /><span className="fit-pill">{index < 2 ? "Strong fit" : "Good fit"}</span></div>
-            <h2>{founder.name}</h2><p className="company-line">{founder.company} <span>·</span> {founder.stage}</p>
-            <p className="founder-summary">{index % 2 === 0 ? "Technical founder with clear product velocity and a strong operator track record." : "Domain expert building in a large market with early, verifiable customer pull."}</p>
-            <div className="evidence-chips"><span><Github size={13} /> Build verified</span><span><TrendingUp size={13} /> Momentum</span></div>
-            <div className="card-score"><span><small>Founder score</small><strong>{founder.score}<em>/100</em></strong></span><div className="mini-ring" style={{ "--score": `${founder.score * 3.6}deg` } as React.CSSProperties}><span>{founder.score}</span></div></div>
-            <div className="card-actions"><button className="secondary-button">Save</button><button className="primary-button" onClick={onCompany}>Analyze <ArrowRight size={14} /></button></div>
+        {filtered.map((founder) => (
+          <article className="founder-card" key={founder.founder_id}>
+            <div className="founder-card-top"><Avatar founder={founder} /><span className="fit-pill">{Math.round(founder.founder_score.confidence * 100)}% confidence</span></div>
+            <h2>{founder.name}</h2><p className="company-line">{founder.company_name} <span>·</span> {labelize(String(founder.raw_inputs.stage || founder.source_channel))}</p>
+            <p className="founder-summary">{founder.axis_scores.founder?.rationale || founder.screened_out_reason || "Analysis is available from the persisted founder record."}</p>
+            <div className="evidence-chips"><span><ShieldCheck size={13} /> {labelize(founder.build_evidence.tier)}</span><span><TrendingUp size={13} /> {labelize(founder.founder_score.trend)}</span></div>
+            <div className="card-score"><span><small>Founder Score</small><strong>{Math.round(founder.founder_score.value)}<em>/100</em></strong></span><div className="mini-ring" style={{ "--score": `${founder.founder_score.value * 3.6}deg` } as React.CSSProperties}><span>{Math.round(founder.founder_score.value)}</span></div></div>
+            <div className="card-actions"><button className="secondary-button">{labelize(founder.source_channel)}</button><button className="primary-button" onClick={() => onCompany(founder.founder_id)}>Open analysis <ArrowRight size={14} /></button></div>
           </article>
         ))}
+        {!filtered.length && <div className="empty-state"><Users size={24} /><strong>No matching founder records</strong><p>Submit a pitch or adjust the search query.</p></div>}
       </section>
     </div>
   );
@@ -271,42 +482,51 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   return <div className="score-line"><div><span>{label}</span><strong>{value}</strong></div><div className="progress"><i style={{ width: `${value}%` }} /></div></div>;
 }
 
-function Company({ onDiligence }: { onDiligence: () => void }) {
+function Company({ founder, onDiligence }: { founder: FounderRecord | null; onDiligence: () => void }) {
+  if (!founder) {
+    return <div className="view"><div className="empty-state"><BriefcaseBusiness size={24} /><strong>No founder selected</strong><p>Choose a founder record from Ranked Opportunities or Founder Discovery.</p></div></div>;
+  }
+  const memoSnapshot = typeof founder.memo.company_snapshot === "string"
+    ? founder.memo.company_snapshot
+    : "No company snapshot was generated for this record.";
+  const hypotheses = Array.isArray(founder.memo.investment_hypotheses)
+    ? founder.memo.investment_hypotheses.filter((item): item is string => typeof item === "string")
+    : [];
+  const trustConfidence = founder.trust_claims.length
+    ? Math.round(founder.trust_claims.reduce((total, claim) => total + claim.confidence, 0) / founder.trust_claims.length * 100)
+    : 0;
+  const watchItems = founder.trust_claims.filter((claim) => claim.evidence_category === "unverifiable" || claim.contradiction_flag);
   return (
     <div className="view company-view">
       <div className="company-header">
-        <div className="company-identity"><span className="company-logo">R</span><div><span className="section-kicker">Developer tools · Seed</span><h1>Ridgeline</h1><p>CI/CD observability for modern platform teams</p></div></div>
-        <div className="hero-actions"><button className="secondary-button"><Globe2 size={16} /> Website</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={16} /> Open diligence</button></div>
+        <div className="company-identity"><span className="company-logo">{founder.company_name[0]?.toUpperCase()}</span><div><span className="section-kicker">{labelize(String(founder.raw_inputs.sector || "Unclassified"))} · {labelize(String(founder.raw_inputs.stage || founder.source_channel))}</span><h1>{founder.company_name}</h1><p>{founder.name} · {labelize(founder.founder_score.trend)} Founder Score trend</p></div></div>
+        <div className="hero-actions"><button className="secondary-button"><Globe2 size={16} /> {founder.source_evidence.length} source evidence</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={16} /> Open claims verification</button></div>
       </div>
       <div className="company-layout">
         <div className="company-main">
           <article className="panel executive-card">
-            <div className="panel-heading"><div><span className="section-kicker"><Bot size={14} /> AI synthesis</span><h2>Intelligence executive summary</h2></div><span className="confidence-pill"><Check size={13} /> 92% confidence</span></div>
-            <p>Ridgeline combines a strong founder-market fit with unusually clear product velocity. Priya Nandakumar’s platform engineering experience at Stripe maps directly to the problem, while 40% month-over-month growth and 210 paying teams provide credible early validation.</p>
-            <div className="summary-tags"><span>Founder–market fit</span><span>Verified traction</span><span>Technical moat</span><span className="warning">Pricing risk</span></div>
+            <div className="panel-heading"><div><span className="section-kicker"><Bot size={14} /> Investment memo</span><h2>Company snapshot</h2></div><span className="confidence-pill"><Check size={13} /> {Math.round(founder.founder_score.confidence * 100)}% score confidence</span></div>
+            <p>{memoSnapshot}</p>
+            <div className="summary-tags"><span>{labelize(founder.build_evidence.tier)}</span><span>{founder.trust_claims.length} trust claims</span><span>{founder.source_evidence.length} source evidence</span>{founder.screened_out && <span className="warning">Screened out</span>}</div>
           </article>
           <section className="company-stats">
-            <article className="panel stat-box"><small>Monthly recurring revenue</small><strong>$38K</strong><span className="positive">↑ 40% MoM</span></article>
-            <article className="panel stat-box"><small>Paying teams</small><strong>210</strong><span>1,150 weekly developers</span></article>
-            <article className="panel stat-box"><small>Last funding</small><strong>$2.4M</strong><span>Seed · Jan 2025</span></article>
+            <article className="panel stat-box"><small>Founder Score</small><strong>{formatMetric(founder.founder_score.value)}</strong><span className="positive">{labelize(founder.founder_score.trend)}</span></article>
+            <article className="panel stat-box"><small>Score Confidence</small><strong>{Math.round(founder.founder_score.confidence * 100)}%</strong><span>{labelize(founder.founder_score.confidence_basis || "track record")}</span></article>
+            <article className="panel stat-box"><small>Signal → Memo</small><strong>{formatMetric(founder.timing.elapsed_seconds, "s")}</strong><span>{Object.keys(founder.timing.stage_timings).length} timed pipeline stages</span></article>
           </section>
           <article className="panel">
             <div className="panel-heading"><div><h2>Why this could win</h2><p>Evidence-backed investment hypotheses</p></div><button className="text-button">View sources <ArrowRight size={14} /></button></div>
-            <div className="hypothesis-list">
-              <div><span>01</span><div><strong>Founder insight compounds into product advantage</strong><p>Three years on Stripe’s developer platform gave Priya direct exposure to the observability gaps Ridgeline now solves.</p></div></div>
-              <div><span>02</span><div><strong>Expansion is visible inside the usage data</strong><p>Teams broaden from CI visibility into release intelligence, creating a credible seat and workflow expansion path.</p></div></div>
-              <div><span>03</span><div><strong>Category timing is favorable</strong><p>Platform teams are consolidating tooling while AI-generated code sharply increases deployment volume.</p></div></div>
-            </div>
+            <div className="hypothesis-list">{hypotheses.map((hypothesis, index) => <div key={hypothesis}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>Investment hypothesis</strong><p>{hypothesis}</p></div></div>)}{!hypotheses.length && <div className="inline-empty">No investment hypotheses were generated.</div>}</div>
           </article>
           <article className="panel team-panel">
-            <div className="panel-heading"><div><h2>Founding team</h2><p>Relevant experience and network strength</p></div></div>
-            <div className="team-grid"><div><span className="avatar indigo">PN</span><strong>Priya Nandakumar</strong><small>CEO · ex-Stripe</small></div><div><span className="avatar cyan">WM</span><strong>Wes Morgan</strong><small>CTO · ex-Datadog</small></div></div>
+            <div className="panel-heading"><div><h2>Founder identity</h2><p>Entity resolution and source coverage</p></div></div>
+            <div className="team-grid"><div><Avatar founder={founder} /><strong>{founder.name}</strong><small>{founder.entity_resolution_confidence === null ? "No external identity match" : `${Math.round(founder.entity_resolution_confidence * 100)}% entity resolution confidence`}</small></div><div><span className="avatar cyan">{founder.source_evidence.length}</span><strong>Source evidence</strong><small>{founder.source_evidence.map((item) => labelize(item.source)).join(", ") || "None collected"}</small></div></div>
           </article>
         </div>
         <aside className="company-rail">
-          <article className="panel overall-score"><span className="mini-ring large" style={{ "--score": "331deg" } as React.CSSProperties}><strong>92</strong><small>/100</small></span><div><span>Founder score</span><strong>Exceptional</strong><small>Top 4% of tracked companies</small></div></article>
-          <article className="panel scorecard"><div className="panel-heading"><div><h2>Intelligence scorecard</h2></div></div><ScoreBar label="Founder fit" value={96} /><ScoreBar label="Market quality" value={84} /><ScoreBar label="Idea × market" value={91} /><ScoreBar label="Evidence trust" value={92} /></article>
-          <article className="panel watch-card"><div className="panel-heading"><div><h2>Watch items</h2></div><span>3</span></div><p><i className="high" /> Enterprise pricing not yet proven</p><p><i className="medium" /> Competitive response from incumbents</p><p><i className="low" /> Hiring pace versus runway</p></article>
+          <article className="panel overall-score"><span className="mini-ring large" style={{ "--score": `${founder.founder_score.value * 3.6}deg` } as React.CSSProperties}><strong>{Math.round(founder.founder_score.value)}</strong><small>/100</small></span><div><span>Founder Score</span><strong>{labelize(founder.founder_score.trend)}</strong><small>{Math.round(founder.founder_score.confidence * 100)}% confidence</small></div></article>
+          <article className="panel scorecard"><div className="panel-heading"><div><h2>Independent axis scores</h2></div></div><ScoreBar label="Founder Axis" value={Math.round(founder.axis_scores.founder?.score || 0)} /><ScoreBar label="Market Axis" value={Math.round(founder.axis_scores.market?.score || 0)} /><ScoreBar label="Idea-vs-Market Axis" value={Math.round(founder.axis_scores.idea_vs_market?.score || 0)} /><ScoreBar label="Trust Claim Confidence" value={trustConfidence} /></article>
+          <article className="panel watch-card"><div className="panel-heading"><div><h2>Unverified or contradicted claims</h2></div><span>{watchItems.length}</span></div>{watchItems.slice(0, 4).map((claim) => <p key={claim.claim_text}><i className={claim.contradiction_flag ? "high" : "medium"} /> {claim.claim_text}</p>)}{!watchItems.length && <p><i className="low" /> No unresolved trust claims</p>}</article>
           <button className="primary-button wide" onClick={onDiligence}><ShieldCheck size={16} /> Start diligence review</button>
         </aside>
       </div>
@@ -314,46 +534,191 @@ function Company({ onDiligence }: { onDiligence: () => void }) {
   );
 }
 
-function Diligence() {
-  const claims = [
-    { title: "$38K MRR with 40% monthly growth", detail: "Corroborated by payment processor export and three customer references.", status: "Verified", confidence: 96 },
-    { title: "1,150 weekly active developers", detail: "Product analytics screenshot covers 1,147 unique developers across 210 teams.", status: "Verified", confidence: 92 },
-    { title: "#2 Product of the Day", detail: "Product Hunt launch archive confirms ranking on March 12, 2025.", status: "Verified", confidence: 99 },
-    { title: "$18B serviceable market", detail: "Top-down estimate is plausible, but bottom-up penetration assumptions need work.", status: "Review", confidence: 64 },
-  ];
+function Diligence({ founder }: { founder: FounderRecord | null }) {
+  if (!founder) {
+    return <div className="view"><div className="empty-state"><ShieldCheck size={24} /><strong>No founder selected</strong><p>Choose a founder before opening claims verification.</p></div></div>;
+  }
+  const claims = founder.trust_claims;
+  const verified = claims.filter((claim) => claim.evidence_category === "known_verified" && !claim.contradiction_flag).length;
+  const review = claims.length - verified;
+  const meanConfidence = claims.length ? Math.round(claims.reduce((total, claim) => total + claim.confidence, 0) / claims.length * 100) : 0;
+  const contradictions = claims.filter((claim) => claim.contradiction_flag).length;
   return (
     <div className="view diligence-view">
       <div className="diligence-header">
-        <div><span className="section-kicker"><ShieldCheck size={14} /> Ridgeline · Active review</span><h1>Claims verification</h1><p>Trace every investment claim back to source evidence.</p></div>
-        <button className="primary-button"><FileText size={16} /> Generate investment memo</button>
+        <div><span className="section-kicker"><ShieldCheck size={14} /> {founder.company_name} · {labelize(founder.build_evidence.tier)}</span><h1>Trust claim verification</h1><p>Trace every extracted pitch claim to its evidence category and confidence.</p></div>
+        <button className="primary-button"><FileText size={16} /> Investment memo ready</button>
       </div>
       <section className="diligence-summary">
-        <article><span className="metric-icon green"><Check size={18} /></span><div><strong>18</strong><small>Claims verified</small></div></article>
-        <article><span className="metric-icon orange"><Clock3 size={18} /></span><div><strong>3</strong><small>Need review</small></div></article>
-        <article><span className="metric-icon blue"><ShieldCheck size={18} /></span><div><strong>92%</strong><small>Evidence trust</small></div></article>
-        <article><span className="metric-icon violet"><Activity size={18} /></span><div><strong>Low</strong><small>Contradiction risk</small></div></article>
+        <article><span className="metric-icon green"><Check size={18} /></span><div><strong>{verified}</strong><small>Known verified claims</small></div></article>
+        <article><span className="metric-icon orange"><Clock3 size={18} /></span><div><strong>{review}</strong><small>Claims needing review</small></div></article>
+        <article><span className="metric-icon blue"><ShieldCheck size={18} /></span><div><strong>{meanConfidence}%</strong><small>Mean claim confidence</small></div></article>
+        <article><span className="metric-icon violet"><Activity size={18} /></span><div><strong>{contradictions}</strong><small>Contradiction flags</small></div></article>
       </section>
       <div className="diligence-layout">
         <section className="claims-column">
           <div className="section-heading"><div><h2>Priority claims</h2><p>Ranked by impact on the investment case</p></div><button className="select-button">All claims <ChevronDown size={14} /></button></div>
           {claims.map((claim, index) => (
-            <article className="claim-card" key={claim.title}>
+            <article className="claim-card" key={`${claim.claim_text}-${index}`}>
               <div className="claim-index">{String(index + 1).padStart(2, "0")}</div>
               <div className="claim-body">
-                <div className="claim-title"><h3>{claim.title}</h3><span className={claim.status === "Verified" ? "verified" : "review"}>{claim.status === "Verified" ? <Check size={13} /> : <Clock3 size={13} />}{claim.status}</span></div>
-                <p>{claim.detail}</p>
-                <div className="source-row"><span><FileCheck2 size={14} /> {index + 2} sources</span><span><Globe2 size={14} /> Public evidence</span><button>Inspect evidence <ArrowRight size={13} /></button></div>
+                <div className="claim-title"><h3>{claim.claim_text}</h3><span className={claim.evidence_category === "known_verified" && !claim.contradiction_flag ? "verified" : "review"}>{claim.evidence_category === "known_verified" && !claim.contradiction_flag ? <Check size={13} /> : <Clock3 size={13} />}{labelize(claim.evidence_category)}</span></div>
+                <p>{claim.contradiction_flag ? "Contradicting evidence was detected and this claim receives no trust credit." : "Confidence is calculated from the available source evidence."}</p>
+                <div className="source-row"><span><FileCheck2 size={14} /> {claim.source || "No source citation"}</span><span><Globe2 size={14} /> {labelize(claim.evidence_category)}</span></div>
               </div>
-              <div className="confidence-score"><strong>{claim.confidence}%</strong><small>confidence</small></div>
+              <div className="confidence-score"><strong>{Math.round(claim.confidence * 100)}%</strong><small>claim confidence</small></div>
             </article>
           ))}
+          {!claims.length && <div className="empty-state"><FileCheck2 size={24} /><strong>No trust claims extracted</strong><p>The pitch did not produce claim-level evidence records.</p></div>}
         </section>
         <aside className="diligence-rail">
           <article className="panel">
-            <div className="panel-heading"><div><h2>Evidence coverage</h2><p>By memo section</p></div></div>
-            <ScoreBar label="Team & history" value={96} /><ScoreBar label="Traction & KPIs" value={88} /><ScoreBar label="Market size" value={68} /><ScoreBar label="Competition" value={74} /><ScoreBar label="Financials" value={81} />
+            <div className="panel-heading"><div><h2>Independent axis scores</h2><p>Not averaged in this view</p></div></div>
+            <ScoreBar label="Founder Axis" value={Math.round(founder.axis_scores.founder?.score || 0)} /><ScoreBar label="Market Axis" value={Math.round(founder.axis_scores.market?.score || 0)} /><ScoreBar label="Idea-vs-Market Axis" value={Math.round(founder.axis_scores.idea_vs_market?.score || 0)} /><ScoreBar label="Entity Resolution Confidence" value={Math.round((founder.entity_resolution_confidence || 0) * 100)} />
           </article>
-          <article className="panel decision-card"><span className="section-kicker"><Lightbulb size={14} /> Recommended next step</span><h2>Validate enterprise expansion.</h2><p>Interview two customers with more than 50 seats and confirm willingness to consolidate adjacent tooling.</p><button className="secondary-button wide">Add diligence task <Plus size={14} /></button></article>
+          <article className="panel decision-card"><span className="section-kicker"><Lightbulb size={14} /> Evidence gap</span><h2>{review ? `Review ${review} unresolved claim${review === 1 ? "" : "s"}.` : "Claim review complete."}</h2><p>{founder.screened_out_reason || `${founder.source_evidence.length} source evidence records and ${founder.build_evidence.evidence_log.length} build checks are attached.`}</p><button className="secondary-button wide">Add diligence task <Plus size={14} /></button></article>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+const scannerSources = [
+  { id: "github", label: "GitHub", icon: Github },
+  { id: "x", label: "X", icon: Activity },
+  { id: "substack", label: "Substack", icon: BookOpen },
+  { id: "devpost", label: "Devpost", icon: Zap },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+];
+
+function SignalScanner({ onDataChanged }: { onDataChanged: () => void }) {
+  const [query, setQuery] = useState("AI infrastructure");
+  const [selected, setSelected] = useState(scannerSources.map((source) => source.id));
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggleSource = (source: string) => {
+    setSelected((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
+  };
+
+  const runScan = async () => {
+    if (!query.trim() || !selected.length) {
+      setError("Enter a query and select at least one source.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/scanners/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, sources: selected, max_results: 8 }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Scanner run failed.");
+      setSignals(data.signals ?? []);
+      onDataChanged();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The scanner API is unavailable.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="view workflow-view">
+      <section className="workflow-hero">
+        <div><span className="section-kicker"><Zap size={14} /> Stage 0 sourcing</span><h1>Find public founder signals.</h1><p>Run GitHub directly and search public X, Substack, Devpost, and LinkedIn pages through Tavily. Every result is source-tagged and persisted.</p></div>
+        <span className="api-status"><i /> Connected to VC Brain API</span>
+      </section>
+      <article className="panel workflow-panel">
+        <label className="field-label">Thesis keyword, founder, or company</label>
+        <div className="scanner-query">
+          <label><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. agent infrastructure, climate fintech" /></label>
+          <button className="primary-button" onClick={runScan} disabled={loading}>{loading ? "Scanning…" : "Run scan"} <ArrowRight size={15} /></button>
+        </div>
+        <div className="source-selector">
+          {scannerSources.map(({ id, label, icon: Icon }) => (
+            <button key={id} className={selected.includes(id) ? "selected" : ""} onClick={() => toggleSource(id)}><Icon size={15} /> {label}{selected.includes(id) && <Check size={13} />}</button>
+          ))}
+        </div>
+        {error && <p className="workflow-error">{error}</p>}
+      </article>
+      <div className="results-bar">
+        <div><strong>{signals.length} persisted signals</strong><span> ranked by normalized signal score</span></div>
+      </div>
+      <section className="signal-results">
+        {!signals.length && !loading && <div className="empty-state"><Search size={24} /><strong>No scan results yet</strong><p>Choose sources and run a query to populate the live signal feed.</p></div>}
+        {signals.map((signal) => (
+          <article className="panel signal-card" key={signal.signal_id}>
+            <span className={`source-mark ${signal.source}`}>{signal.source === "github" ? <Github size={16} /> : signal.source === "linkedin" ? <Linkedin size={16} /> : <Globe2 size={16} />}</span>
+            <div><div className="signal-title"><span>{signal.source}</span><strong>{Math.round(signal.score)} signal score</strong></div><h2>{signal.title}</h2><p>{signal.summary || "Public source discovered without an extractable summary."}</p><a href={signal.source_url} target="_blank" rel="noreferrer">Inspect source <ArrowRight size={13} /></a></div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function PitchIntake({ onCreated }: { onCreated: (founderId: string) => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState<FounderRecord | null>(null);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) {
+      setStatus("error");
+      setMessage("Select a PDF, TXT, or Markdown pitch file.");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    form.set("pitch", file);
+    setStatus("loading");
+    setMessage("");
+    setResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/founders/inbound/upload`, { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Pitch processing failed.");
+      setResult(data);
+      setStatus("success");
+      setMessage("Founder created, enriched, analyzed, and saved.");
+      onCreated(data.founder_id);
+    } catch (reason) {
+      setStatus("error");
+      setMessage(reason instanceof Error ? reason.message : "The intake API is unavailable.");
+    }
+  };
+
+  return (
+    <div className="view workflow-view">
+      <section className="workflow-hero">
+        <div><span className="section-kicker"><Upload size={14} /> Inbound activation</span><h1>Turn a pitch into an investment record.</h1><p>Upload a pitch and minimal founder context. The backend extracts the deck, checks public LinkedIn evidence, runs the analysis pipeline, and persists the founder.</p></div>
+      </section>
+      <div className="intake-layout">
+        <form className="panel intake-form" onSubmit={submit}>
+          <div className="form-grid">
+            <label><span>Founder name</span><input name="name" required maxLength={160} placeholder="Priya Nandakumar" /></label>
+            <label><span>Company name</span><input name="company_name" required maxLength={200} placeholder="Ridgeline" /></label>
+            <label><span>LinkedIn profile</span><input name="linkedin_url" type="url" placeholder="https://linkedin.com/in/…" /></label>
+            <label><span>GitHub handle</span><input name="github_handle" placeholder="priyanandakumar" /></label>
+            <label><span>Sector</span><input name="sector" placeholder="AI infrastructure" /></label>
+            <label><span>Stage</span><input name="stage" placeholder="Seed" /></label>
+            <label className="full-field"><span>Geography</span><input name="geography" placeholder="United States" /></label>
+          </div>
+          <label className={`upload-zone ${file ? "has-file" : ""}`}>
+            <Upload size={25} /><strong>{file ? file.name : "Choose pitch deck"}</strong><span>PDF, TXT, or Markdown · maximum 10 MB</span>
+            <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <button className="primary-button wide intake-submit" disabled={status === "loading"}>{status === "loading" ? "Running intelligence pipeline…" : "Upload and analyze"} <ArrowRight size={15} /></button>
+          {message && <p className={`workflow-message ${status}`}>{message}</p>}
+        </form>
+        <aside className="intake-rail">
+          <article className="panel process-card"><span className="section-kicker"><Bot size={14} /> Processing path</span>{["Secure pitch extraction", "Founder & company creation", "Public LinkedIn evidence", "Entity and thesis analysis", "Score, memo, and persistence"].map((step, index) => <div key={step}><span>{index + 1}</span><p>{step}</p></div>)}</article>
+          {result && <article className="panel result-card"><span className="metric-icon green"><Check size={18} /></span><small>Analysis complete</small><h2>{result.company_name}</h2><p>{result.name}</p><strong>{Math.round(result.founder_score.value)}<em>/100 Founder Score</em></strong><span>{result.source_evidence.filter((item) => item.source === "linkedin").length} LinkedIn evidence result(s)</span></article>}
         </aside>
       </div>
     </div>
@@ -364,7 +729,7 @@ function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () 
   const [query, setQuery] = useState("");
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); open ? onClose() : undefined; }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && open) { event.preventDefault(); onClose(); }
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
@@ -372,8 +737,10 @@ function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () 
   }, [onClose, open]);
   if (!open) return null;
   const suggestions = [
+    { title: "Scan GitHub, X, Substack, Devpost, and LinkedIn", detail: "Live signal scanner", view: "scanner" as View },
+    { title: "Upload a founder pitch deck", detail: "Inbound activation", view: "intake" as View },
     { title: "Find founders with strong GitHub momentum", detail: "Search Discovery", view: "discovery" as View },
-    { title: "Open Ridgeline intelligence profile", detail: "Company analysis", view: "company" as View },
+    { title: "Open the selected founder record", detail: "Company analysis", view: "company" as View },
     { title: "Review unverified claims", detail: "Diligence workspace", view: "diligence" as View },
   ].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
   return (
@@ -390,6 +757,62 @@ export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [founders, setFounders] = useState<FounderRecord[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
+  const [selectedFounderId, setSelectedFounderId] = useState<string | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadData = async () => {
+      setDataLoading(true);
+      if (USE_MOCK_DATA) {
+        setFounders(MOCK_FOUNDERS);
+        setSignals(MOCK_SIGNALS);
+        setSummary(MOCK_SUMMARY);
+        setSelectedFounderId((current) => current && MOCK_FOUNDERS.some((founder) => founder.founder_id === current) ? current : MOCK_FOUNDERS[0].founder_id);
+        setDataError("");
+        setDataLoading(false);
+        return;
+      }
+      try {
+        const [foundersResponse, signalsResponse, summaryResponse] = await Promise.all([
+          fetch(`${API_BASE}/founders`, { signal: controller.signal }),
+          fetch(`${API_BASE}/signals?limit=8`, { signal: controller.signal }),
+          fetch(`${API_BASE}/dashboard/summary`, { signal: controller.signal }),
+        ]);
+        if (!foundersResponse.ok || !signalsResponse.ok || !summaryResponse.ok) {
+          throw new Error("The VC Brain API returned an error.");
+        }
+        const [founderData, signalData, summaryData] = await Promise.all([
+          foundersResponse.json(),
+          signalsResponse.json(),
+          summaryResponse.json(),
+        ]);
+        setFounders(founderData);
+        setSignals(signalData.signals ?? []);
+        setSummary(summaryData);
+        setSelectedFounderId((current) => current && founderData.some((founder: FounderRecord) => founder.founder_id === current) ? current : founderData[0]?.founder_id ?? null);
+        setDataError("");
+      } catch (reason) {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setDataError(reason instanceof Error ? `${reason.message} Start FastAPI at ${API_BASE}.` : "The VC Brain API is unavailable.");
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    loadData();
+    return () => controller.abort();
+  }, [refreshVersion]);
+
+  const selectedFounder = founders.find((founder) => founder.founder_id === selectedFounderId) ?? null;
+  const openFounder = (founderId: string) => {
+    setSelectedFounderId(founderId);
+    setView("company");
+  };
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -404,13 +827,15 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <Sidebar view={view} onView={setView} open={navOpen} onClose={() => setNavOpen(false)} />
+      <Sidebar view={view} onView={setView} open={navOpen} onClose={() => setNavOpen(false)} reviewCount={summary.unverified_claims} />
       <div className="workspace">
         <Topbar view={view} onMenu={() => setNavOpen(true)} onSearch={() => setSearchOpen(true)} />
-        {view === "dashboard" && <Dashboard onView={setView} />}
-        {view === "discovery" && <Discovery onCompany={() => setView("company")} />}
-        {view === "company" && <Company onDiligence={() => setView("diligence")} />}
-        {view === "diligence" && <Diligence />}
+        {view === "dashboard" && <Dashboard onView={setView} onFounder={openFounder} founders={founders} signals={signals} summary={summary} loading={dataLoading} error={dataError} />}
+        {view === "scanner" && <SignalScanner onDataChanged={() => setRefreshVersion((version) => version + 1)} />}
+        {view === "intake" && <PitchIntake onCreated={(founderId) => { setSelectedFounderId(founderId); setRefreshVersion((version) => version + 1); }} />}
+        {view === "discovery" && <Discovery founders={founders} onCompany={openFounder} />}
+        {view === "company" && <Company founder={selectedFounder} onDiligence={() => setView("diligence")} />}
+        {view === "diligence" && <Diligence founder={selectedFounder} />}
       </div>
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={setView} />
     </main>

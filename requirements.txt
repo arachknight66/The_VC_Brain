@@ -8,6 +8,7 @@ pydantic>=2.6
 sqlalchemy>=2.0
 rapidfuzz>=3.6
 pypdf>=4.0
+python-multipart>=0.0.9
 requests>=2.31
 pytest>=8.0
 pandas>=2.2
