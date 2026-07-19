@@ -18,6 +18,7 @@ import {
   Linkedin,
   LayoutDashboard,
   Lightbulb,
+  MessageCircle,
   Menu,
   Plus,
   Search,
@@ -31,7 +32,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type View = "dashboard" | "scanner" | "intake" | "discovery" | "company" | "diligence";
 
@@ -87,6 +88,19 @@ type FounderRecord = {
   memo: Record<string, unknown>;
   adversarial_view: Record<string, unknown>;
   timing: { elapsed_seconds: number | null; memo_ready_at: string | null; stage_timings: Record<string, number> };
+};
+
+type BriefingStep = {
+  label: string;
+  content: string;
+  elapsed: number;
+};
+
+type ChatMessage = {
+  id: string;
+  role: "assistant" | "user" | "thinking";
+  label?: string;
+  content: string;
 };
 
 type DashboardSummary = {
@@ -667,7 +681,7 @@ function ReasoningTrail({ founder }: { founder: FounderRecord }) {
   );
 }
 
-function Company({ founder, onDiligence }: { founder: FounderRecord | null; onDiligence: () => void }) {
+function Company({ founder, onDiligence, onOpenChat }: { founder: FounderRecord | null; onDiligence: () => void; onOpenChat: () => void }) {
   if (!founder) {
     return <div className="view"><div className="empty-state"><BriefcaseBusiness size={24} /><strong>No founder selected</strong><p>Choose a founder record from Ranked Opportunities or Founder Discovery.</p></div></div>;
   }
@@ -685,7 +699,7 @@ function Company({ founder, onDiligence }: { founder: FounderRecord | null; onDi
     <div className="view company-view">
       <div className="company-header">
         <div className="company-identity"><span className="company-logo">{founder.company_name[0]?.toUpperCase()}</span><div><span className="section-kicker">{labelize(String(founder.raw_inputs.sector || "Unclassified"))} · {labelize(String(founder.raw_inputs.stage || founder.source_channel))}</span><h1>{founder.company_name}</h1><p>{founder.name} · {labelize(founder.founder_score.trend)} Founder Score trend</p></div></div>
-        <div className="hero-actions"><button className="secondary-button"><Globe2 size={16} /> {founder.source_evidence.length} source evidence</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={16} /> Open claims verification</button></div>
+        <div className="hero-actions"><button className="secondary-button"><Globe2 size={16} /> {founder.source_evidence.length} source evidence</button><button className="secondary-button" onClick={onOpenChat}><MessageCircle size={16} /> Ask about this company</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={16} /> Open claims verification</button></div>
       </div>
       <div className="company-layout">
         <div className="company-main">
@@ -939,6 +953,162 @@ function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () 
   );
 }
 
+function InvestorChat({
+  founder,
+  open,
+  onOpenChange,
+}: {
+  founder: FounderRecord | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [briefingSteps, setBriefingSteps] = useState<BriefingStep[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // Note: this component is remounted (via a `key={founder.founder_id}` at
+  // the call site) whenever the investor switches founders, so all state
+  // above starts fresh without needing a reset effect here.
+
+  useEffect(() => {
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pushThinking = (label: string) => {
+    const id = `thinking-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setMessages((current) => [...current, { id, role: "thinking", label, content: "" }]);
+    return id;
+  };
+
+  const resolveThinking = (id: string, label: string, content: string) => {
+    setMessages((current) => current.map((message) => (message.id === id ? { id, role: "assistant", label, content } : message)));
+  };
+
+  const runBriefing = async () => {
+    if (!founder) return;
+    if (founder.founder_id.startsWith("mock-")) {
+      setStatus("error");
+      setErrorMessage("This is a retained demo fixture with no persisted backend record. Submit a pitch or run the signal scanner to chat about a real founder.");
+      return;
+    }
+    setStatus("loading");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/founders/${founder.founder_id}/investor-briefing`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "The investor briefing agent failed.");
+      const steps: BriefingStep[] = data.steps ?? [];
+      setBriefingSteps(steps);
+      // Reveal each reasoning pass one at a time, so the multi-step chain is
+      // visibly "thinking" rather than dumping the whole answer at once.
+      for (const step of steps) {
+        const thinkingId = pushThinking(step.label);
+        await sleep(500);
+        resolveThinking(thinkingId, step.label, step.content);
+        await sleep(200);
+      }
+      setStatus("ready");
+    } catch (reason) {
+      setStatus("error");
+      setErrorMessage(reason instanceof Error ? reason.message : "The investor chat API is unavailable.");
+    }
+  };
+
+  useEffect(() => {
+    if (open && founder && status === "idle") {
+      // Deferred to a microtask so the effect body itself stays synchronous
+      // (runBriefing's first line sets state, which must not happen inline
+      // within the effect callback).
+      void Promise.resolve().then(() => runBriefing());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, founder]);
+
+  const sendMessage = async () => {
+    if (!founder || !input.trim() || sending) return;
+    const question = input.trim();
+    setInput("");
+    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", content: question }]);
+    setSending(true);
+    const thinkingId = pushThinking("Thinking it through");
+    try {
+      const response = await fetch(`${API_BASE}/founders/${founder.founder_id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: question, briefing_steps: briefingSteps }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "The chat reply failed.");
+      resolveThinking(thinkingId, "Reply", data.reply);
+    } catch (reason) {
+      resolveThinking(thinkingId, "Reply", reason instanceof Error ? reason.message : "The investor chat API is unavailable.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!founder) return null;
+
+  return (
+    <>
+      <button className={`chat-fab ${open ? "open" : ""}`} onClick={() => onOpenChange(!open)} aria-label={open ? "Close investor chat" : "Ask The VC Brain about this company"}>
+        {open ? <X size={20} /> : <Bot size={20} />}
+      </button>
+      {open && (
+        <div className="chat-panel" role="dialog" aria-label={`Investor chat about ${founder.company_name}`}>
+          <div className="chat-header">
+            <div>
+              <span className="section-kicker"><Sparkles size={12} /> Multi-step reasoning agent</span>
+              <strong>{founder.company_name}</strong>
+            </div>
+            <button className="icon-button" onClick={() => onOpenChange(false)} aria-label="Close chat"><X size={16} /></button>
+          </div>
+          <div className="chat-body" ref={bodyRef}>
+            {status === "loading" && !messages.length && <div className="inline-empty">Reading the evidence…</div>}
+            {messages.map((message) => (
+              <div className={`chat-bubble ${message.role}`} key={message.id}>
+                {message.role !== "user" && message.label && <span className="chat-bubble-label">{message.label}</span>}
+                {message.role === "thinking" ? (
+                  <span className="typing-dots"><i /><i /><i /></span>
+                ) : (
+                  <p>{message.content}</p>
+                )}
+              </div>
+            ))}
+            {status === "error" && <div className="chat-error">{errorMessage}</div>}
+            {status === "ready" && (
+              <p className="chat-disclaimer">This is a plain-English digest of the scores, evidence, and confidence already on record — not an investment recommendation.</p>
+            )}
+          </div>
+          <form
+            className="chat-input-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendMessage();
+            }}
+          >
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={status === "ready" ? "Ask a follow-up question…" : "Waiting for the briefing…"}
+              disabled={status !== "ready" || sending}
+            />
+            <button type="submit" className="icon-button" disabled={status !== "ready" || sending || !input.trim()} aria-label="Send message">
+              <ArrowRight size={16} />
+            </button>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [navOpen, setNavOpen] = useState(false);
@@ -950,6 +1120,7 @@ export default function Home() {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1017,10 +1188,11 @@ export default function Home() {
         {view === "scanner" && <SignalScanner onDataChanged={() => setRefreshVersion((version) => version + 1)} />}
         {view === "intake" && <PitchIntake onCreated={(founderId) => { setSelectedFounderId(founderId); setRefreshVersion((version) => version + 1); }} />}
         {view === "discovery" && <Discovery founders={founders} onCompany={openFounder} />}
-        {view === "company" && <Company founder={selectedFounder} onDiligence={() => setView("diligence")} />}
+        {view === "company" && <Company founder={selectedFounder} onDiligence={() => setView("diligence")} onOpenChat={() => setChatOpen(true)} />}
         {view === "diligence" && <Diligence founder={selectedFounder} />}
       </div>
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={setView} />
+      <InvestorChat key={selectedFounder?.founder_id ?? "none"} founder={selectedFounder} open={chatOpen} onOpenChange={setChatOpen} />
     </main>
   );
 }

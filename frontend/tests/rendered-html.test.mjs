@@ -39,3 +39,19 @@ test("ships live scanner and pitch-upload API integrations", async () => {
   assert.match(page, /const MOCK_FOUNDERS/);
   assert.match(page, /\.\.\.MOCK_FOUNDERS, \.\.\.founderData/);
 });
+
+test("ships the multi-reasoning investor chat box", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /function InvestorChat/);
+  assert.match(page, /\/investor-briefing/);
+  assert.match(page, /\/founders\/\$\{founder\.founder_id\}\/chat/);
+  assert.match(page, /chat-fab/);
+  assert.match(page, /Reading the evidence|Weighing the upside|Weighing the risks/);
+  assert.match(page, /not an investment recommendation/i);
+  assert.match(page, /<InvestorChat/);
+
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.chat-fab/);
+  assert.match(css, /\.chat-panel/);
+  assert.match(css, /\.typing-dots/);
+});

@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
+from agents import investor_chat_agent
 from agents.sourcing_agent import MAX_PITCH_BYTES, create_from_inbound, extract_pitch_text
 from memory.signal_store import SignalStore
 from memory.store import FounderStore
@@ -36,6 +37,17 @@ class ScannerRunRequest(BaseModel):
     query: str
     sources: list[str] = list(SUPPORTED_SOURCES)
     max_results: int = 10
+
+
+class BriefingStepPayload(BaseModel):
+    label: str
+    content: str
+    elapsed: float | None = None
+
+
+class ChatRequest(BaseModel):
+    message: str
+    briefing_steps: list[BriefingStepPayload] = []
 
 
 @router.post("/founders/inbound")
@@ -194,3 +206,28 @@ def get_founder_build_evidence(founder_id: str) -> dict:
     if record is None:
         raise HTTPException(status_code=404, detail="Founder not found")
     return record.build_evidence.to_dict()
+
+
+@router.get("/founders/{founder_id}/investor-briefing")
+def get_investor_briefing(founder_id: str) -> dict:
+    """Runs the multi-reasoning investor chat agent's 4-pass briefing chain
+    for one founder, returning every intermediate step for the frontend
+    chat box to reveal progressively."""
+    record = _store.get(founder_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Founder not found")
+    return investor_chat_agent.generate_briefing(record)
+
+
+@router.post("/founders/{founder_id}/chat")
+def post_investor_chat(founder_id: str, payload: ChatRequest) -> dict:
+    """Answers one free-text investor follow-up question, grounded in the
+    founder's evidence plus the briefing steps already shown to the client."""
+    record = _store.get(founder_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Founder not found")
+    if not payload.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be empty")
+    briefing_steps = [s.model_dump() for s in payload.briefing_steps]
+    reply = investor_chat_agent.answer_followup(record, briefing_steps, payload.message.strip())
+    return {"reply": reply}
