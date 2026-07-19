@@ -24,6 +24,7 @@ import {
   ListChecks,
   Menu,
   MessageSquare,
+  Moon,
   Plus,
   Radar,
   RefreshCw,
@@ -31,6 +32,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Sun,
   Target,
   TrendingUp,
   Upload,
@@ -118,6 +120,7 @@ type AlertRules = { confidenceFloor: number; staleEvidenceDays: number; contradi
 type PortfolioAlert = { id: string; founderId: string; company: string; severity: "critical" | "warning" | "info"; title: string; detail: string };
 type SessionUser = AppUser & { role?: "admin" | "member" | "viewer"; organizationName?: string };
 type SyncStatus = "loading" | "saved" | "saving" | "conflict" | "error";
+type ThemeMode = "light" | "dark";
 type WorkspaceState = {
   companies: Record<string, CompanyWorkflow>;
   claimReviews: Record<string, ClaimReview>;
@@ -280,9 +283,14 @@ function Sidebar({ view, onNavigate, open, onClose, inboxCount, diligenceCount, 
   </aside></>;
 }
 
-function Topbar({ view, onMenu, onQuickActions, online, syncStatus, user }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean; syncStatus: SyncStatus; user: SessionUser }) {
+function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
+  const Icon = theme === "dark" ? Sun : Moon;
+  return <button className="icon-button theme-toggle" onClick={onToggle} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}><Icon size={16} /></button>;
+}
+
+function Topbar({ view, onMenu, onQuickActions, online, syncStatus, user, theme, onToggleTheme }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean; syncStatus: SyncStatus; user: SessionUser; theme: ThemeMode; onToggleTheme: () => void }) {
   const syncLabel = !online ? "Offline" : syncStatus === "saving" ? "Saving…" : syncStatus === "conflict" ? "Updated elsewhere" : syncStatus === "error" ? "Sync failed" : syncStatus === "loading" ? "Connecting…" : "Shared workspace saved";
-  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="avatar blue small" title={user.email}>{initials(user.displayName)}</span></div></header>;
+  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="avatar blue small" title={user.email}>{initials(user.displayName)}</span></div></header>;
 }
 
 function LoadingWorkspace() {
@@ -652,6 +660,8 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   const [online, setOnline] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>("light");
+  const [themeReady, setThemeReady] = useState(false);
 
   const notify = (message: string, tone: Toast["tone"] = "success") => {
     const id = crypto.randomUUID();
@@ -742,13 +752,25 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   useEffect(() => { const controller = new AbortController(); Promise.all([fetch(`${API_BASE}/founders`, { signal: controller.signal }), fetch(`${API_BASE}/signals?limit=50`, { signal: controller.signal }), fetch(`${API_BASE}/dashboard/summary`, { signal: controller.signal })]).then(async ([founderResponse, signalResponse, summaryResponse]) => { if (!founderResponse.ok || !signalResponse.ok || !summaryResponse.ok) throw new Error("The VC Brain API returned an error."); const founderData: FounderRecord[] = await founderResponse.json(); const signalData = await signalResponse.json(); setFounders(founderData); setSignals(signalData.signals ?? []); setSummary(await summaryResponse.json()); setWorkspace((current) => ({ ...current, companies: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, defaultWorkflow(founder)])), ...current.companies }, memos: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, { status: "draft", version: 1, reviewer: "Unassigned", updatedAt: founder.timing.memo_ready_at || new Date().toISOString(), note: "" }])), ...current.memos } })); setSelectedFounderId((current) => current || founderData[0]?.founder_id || null); setError(""); }).catch((reason) => { if (reason.name !== "AbortError") setError(`${reason.message} The authenticated analysis service is unavailable.`); }).finally(() => setLoading(false)); return () => controller.abort(); }, [refresh]);
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setQuickOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
   useEffect(() => { const updateOnline = () => setOnline(navigator.onLine); updateOnline(); window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, []);
+  useEffect(() => {
+    const saved = localStorage.getItem("vc-brain-theme");
+    const initial = saved === "dark" || saved === "light" ? saved : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    setTheme(initial);
+    document.documentElement.dataset.theme = initial;
+    setThemeReady(true);
+  }, []);
+  useEffect(() => {
+    if (!themeReady) return;
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("vc-brain-theme", theme);
+  }, [theme, themeReady]);
 
   const selectedFounder = founders.find((founder) => founder.founder_id === selectedFounderId) ?? null;
   const compareFounders = compareIds.map((id) => founders.find((founder) => founder.founder_id === id)).filter((founder): founder is FounderRecord => Boolean(founder));
   const diligenceCount = founders.reduce((total, founder) => total + founder.trust_claims.filter((claim, index) => (workspace.claimReviews[`${founder.founder_id}:${index}`]?.status ?? "unreviewed") === "unreviewed").length, 0);
   const ownerOptions = [...new Set([sessionUser.displayName, ...OWNERS])];
   const retry = () => { setLoading(true); setError(""); setWorkspaceError(""); setRefresh((value) => value + 1); setWorkspaceRefresh((value) => value + 1); };
-  return <><main className="app-shell" aria-hidden={quickOpen || undefined}><Sidebar view={view} onNavigate={(next) => navigate(next)} open={navOpen} onClose={() => setNavOpen(false)} inboxCount={signals.length} diligenceCount={diligenceCount} user={sessionUser} /><div className="workspace"><Topbar view={view} onMenu={() => setNavOpen(true)} onQuickActions={() => setQuickOpen(true)} online={online} syncStatus={syncStatus} user={sessionUser} />
+  return <><main className="app-shell" aria-hidden={quickOpen || undefined}><Sidebar view={view} onNavigate={(next) => navigate(next)} open={navOpen} onClose={() => setNavOpen(false)} inboxCount={signals.length} diligenceCount={diligenceCount} user={sessionUser} /><div className="workspace"><Topbar view={view} onMenu={() => setNavOpen(true)} onQuickActions={() => setQuickOpen(true)} online={online} syncStatus={syncStatus} user={sessionUser} theme={theme} onToggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")} />
     {(workspaceError || error) && <ErrorBanner message={workspaceError || error} onRetry={retry} />}
     {loading ? <LoadingWorkspace /> : <>
     {view === "overview" && <Overview founders={founders} signals={signals} summary={summary} workflow={workspace} onOpen={(id) => navigate("company", id)} onNavigate={(next) => navigate(next)} />}
