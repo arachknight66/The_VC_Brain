@@ -187,7 +187,12 @@ function createMockFounder({
       company_snapshot: `${company} is a retained demo company in ${sector}, shown only when the mock-data feature flag is enabled.`,
       investment_hypotheses: ["Founder experience maps to the stated problem.", "Public build evidence supports execution velocity."],
     },
-    adversarial_view: { bear_case_summary: "The retained mock case still requires customer and market validation." },
+    adversarial_view: {
+      bear_case_summary: "The retained mock case still requires customer and market validation.",
+      key_risks: ["Customer and market validation for this demo fixture is still limited.", "Growth claims rely on a small set of mock evidence records."],
+      unresolved_red_flags: ["No independently verified financial data is attached to this fixture."],
+      what_would_change_my_mind: "Independent corroboration of the underlying growth and retention claims.",
+    },
     timing: { elapsed_seconds: 14.2, memo_ready_at: "2026-07-14T12:00:14Z", stage_timings: { entity_resolution: 0.4, scoring: 8.1, memo: 5.7 } },
   };
 }
@@ -953,6 +958,60 @@ function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () 
   );
 }
 
+function isMockFounder(founder: FounderRecord) {
+  return founder.founder_id.startsWith("mock-");
+}
+
+// Retained demo fixtures have no persisted backend record for the live
+// multi-reasoning agent to run against, so the chat box falls back to this
+// deterministic, client-side digest of the same fixture fields (memo,
+// adversarial_view, axis_scores, trust_claims) — same 4-pass shape, same
+// "never give a yes/no verdict" rule, just composed locally instead of via
+// the backend agent.
+function generateLocalBriefing(founder: FounderRecord): BriefingStep[] {
+  const axisBits = Object.entries(founder.axis_scores)
+    .map(([name, axis]) => `${labelize(name)} ${Math.round(axis.score)}/100`)
+    .join(", ");
+  const hypotheses = Array.isArray(founder.memo.investment_hypotheses)
+    ? (founder.memo.investment_hypotheses as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  const adversarial = founder.adversarial_view as { bear_case_summary?: string; key_risks?: string[] };
+  const risks = Array.isArray(adversarial.key_risks) ? adversarial.key_risks : [];
+
+  return [
+    {
+      label: "Reading the evidence",
+      content: `${founder.company_name} has ${founder.trust_claims.length} trust claim(s) on file, a build-evidence status of "${labelize(founder.build_evidence.tier)}", and ${axisBits || "no axis scores yet"}.`,
+      elapsed: 0.4,
+    },
+    {
+      label: "Weighing the upside",
+      content: hypotheses.length ? hypotheses.join(" ") : "No strong bull-case hypotheses are on file for this company.",
+      elapsed: 0.5,
+    },
+    {
+      label: "Weighing the risks",
+      content: risks.length ? risks.join(" ") : adversarial.bear_case_summary || "No major risks are currently flagged for this company.",
+      elapsed: 0.5,
+    },
+    {
+      label: "Plain-English summary",
+      content: `${founder.company_name} currently scores ${Math.round(founder.founder_score.value)}/100 with ${Math.round(founder.founder_score.confidence * 100)}% confidence (${labelize(founder.founder_score.trend)} trend). ${
+        hypotheses[0] ?? ""
+      } At the same time, ${(risks[0] ?? adversarial.bear_case_summary ?? "some evidence remains unverified").toLowerCase()} This is a plain-English digest of the fixture data — the investment call is still yours to make.`,
+      elapsed: 0.3,
+    },
+  ];
+}
+
+function answerLocalFollowup(founder: FounderRecord, question: string): string {
+  const lower = question.toLowerCase();
+  if (lower.includes("invest") || lower.includes("recommend") || lower.includes("should i")) {
+    return `I don't give yes/no investment recommendations — that call is yours. Based on the fixture data, ${founder.company_name} scores ${Math.round(founder.founder_score.value)}/100 with ${Math.round(founder.founder_score.confidence * 100)}% confidence; weigh that against the risks above.`;
+  }
+  return `Based on the retained demo fixture for ${founder.company_name}: ${(founder.memo.company_snapshot as string) || "no further detail is on file for this mock record."}`;
+}
+
 function InvestorChat({
   founder,
   open,
@@ -990,13 +1049,33 @@ function InvestorChat({
     setMessages((current) => current.map((message) => (message.id === id ? { id, role: "assistant", label, content } : message)));
   };
 
+  const revealSteps = async (steps: BriefingStep[]) => {
+    // Reveal each reasoning pass one at a time, so the multi-step chain is
+    // visibly "thinking" rather than dumping the whole answer at once.
+    for (const step of steps) {
+      const thinkingId = pushThinking(step.label);
+      await sleep(500);
+      resolveThinking(thinkingId, step.label, step.content);
+      await sleep(200);
+    }
+  };
+
   const runBriefing = async () => {
     if (!founder) return;
-    if (founder.founder_id.startsWith("mock-")) {
-      setStatus("error");
-      setErrorMessage("This is a retained demo fixture with no persisted backend record. Submit a pitch or run the signal scanner to chat about a real founder.");
+
+    if (isMockFounder(founder)) {
+      // Retained demo fixtures have no persisted backend record for the
+      // live agent to run against — fall back to a client-side digest of
+      // the same fixture data rather than blocking the chat entirely.
+      setStatus("loading");
+      setErrorMessage("");
+      const steps = generateLocalBriefing(founder);
+      setBriefingSteps(steps);
+      await revealSteps(steps);
+      setStatus("ready");
       return;
     }
+
     setStatus("loading");
     setErrorMessage("");
     try {
@@ -1005,14 +1084,7 @@ function InvestorChat({
       if (!response.ok) throw new Error(data.detail ?? "The investor briefing agent failed.");
       const steps: BriefingStep[] = data.steps ?? [];
       setBriefingSteps(steps);
-      // Reveal each reasoning pass one at a time, so the multi-step chain is
-      // visibly "thinking" rather than dumping the whole answer at once.
-      for (const step of steps) {
-        const thinkingId = pushThinking(step.label);
-        await sleep(500);
-        resolveThinking(thinkingId, step.label, step.content);
-        await sleep(200);
-      }
+      await revealSteps(steps);
       setStatus("ready");
     } catch (reason) {
       setStatus("error");
@@ -1037,6 +1109,14 @@ function InvestorChat({
     setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", content: question }]);
     setSending(true);
     const thinkingId = pushThinking("Thinking it through");
+
+    if (isMockFounder(founder)) {
+      await sleep(500);
+      resolveThinking(thinkingId, "Reply", answerLocalFollowup(founder, question));
+      setSending(false);
+      return;
+    }
+
     try {
       const response = await fetch(`${API_BASE}/founders/${founder.founder_id}/chat`, {
         method: "POST",
@@ -1083,7 +1163,11 @@ function InvestorChat({
             ))}
             {status === "error" && <div className="chat-error">{errorMessage}</div>}
             {status === "ready" && (
-              <p className="chat-disclaimer">This is a plain-English digest of the scores, evidence, and confidence already on record — not an investment recommendation.</p>
+              <p className="chat-disclaimer">
+                {isMockFounder(founder)
+                  ? "Retained demo fixture — this digest is composed client-side from the mock record, not a live agent call. Submit a pitch or run the signal scanner for a real founder."
+                  : "This is a plain-English digest of the scores, evidence, and confidence already on record — not an investment recommendation."}
+              </p>
             )}
           </div>
           <form
