@@ -31,7 +31,8 @@ test("serves deep-linkable workflow routes", async () => {
     const segment = path.split(/[/?]/).filter(Boolean)[0];
     assert.match(workspace, new RegExp(segment === "companies" ? "companies" : segment), `${path} should resolve`);
   }
-  assert.match(catchAll, /default, dynamic/);
+  assert.match(catchAll, /dynamic = "force-dynamic"/);
+  assert.match(catchAll, /export default Page/);
 });
 
 test("gates decision-ready language on evidence completeness", async () => {
@@ -83,8 +84,8 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   const authCallback = await readFile(new URL("../app/api/auth/google/callback/route.ts", import.meta.url), "utf8");
   const workspaceRoute = await readFile(new URL("../app/api/workspace/route.ts", import.meta.url), "utf8");
   const proxyRoute = await readFile(new URL("../app/api/vc/[...path]/route.ts", import.meta.url), "utf8");
+  const database = await readFile(new URL("../db/index.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
-  const hosting = JSON.parse(await readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"));
   assert.match(page, /getAppUser/);
   assert.match(appAuth, /getGoogleUser/);
   assert.match(googleAuth, /createRemoteJWKSet/);
@@ -104,5 +105,6 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(schema, /memberships/);
   assert.match(schema, /workspaceStates/);
   assert.match(schema, /auditEvents/);
-  assert.equal(hosting.d1, "DB");
+  assert.match(database, /drizzle-orm\/postgres-js/);
+  assert.match(database, /DATABASE_URL/);
 });

@@ -8,13 +8,29 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 from contextlib import contextmanager
 from typing import Optional
 
 from memory.models import FounderRecord, FounderScoreHistoryEntry, now_iso
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "vc_brain.db")
+LOCAL_DB_PATH = os.path.join(os.path.dirname(__file__), "vc_brain.db")
+BUNDLED_DEMO_DB_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "data", "demo", "vc_brain.db"
+)
+DB_PATH = "/tmp/vc_brain.db" if os.getenv("VERCEL") else LOCAL_DB_PATH
+
+
+def _prepare_runtime_database() -> None:
+    """Seed Vercel's writable temporary filesystem from the bundled demo DB."""
+    if not os.getenv("VERCEL") or os.path.exists(DB_PATH):
+        return
+    if os.path.exists(BUNDLED_DEMO_DB_PATH):
+        shutil.copyfile(BUNDLED_DEMO_DB_PATH, DB_PATH)
+
+
+_prepare_runtime_database()
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS founders (

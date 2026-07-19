@@ -6,6 +6,7 @@ venv/
 env/
 .env
 *.db
+!data/demo/vc_brain.db
 memory/vc_brain.db
 .pytest_cache/
 .DS_Store
