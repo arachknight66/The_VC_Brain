@@ -11,6 +11,7 @@ included as the optional extra-credit live signal.
 from __future__ import annotations
 
 import json
+import io
 import logging
 import os
 
@@ -22,6 +23,13 @@ from memory.models import FounderRecord, now_iso
 logger = logging.getLogger("vc_brain")
 
 SYNTHETIC_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "synthetic_founders")
+MAX_PITCH_BYTES = 10 * 1024 * 1024
+ALLOWED_PITCH_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "application/octet-stream",
+}
 
 
 @agent_stage("sourcing")
@@ -55,6 +63,33 @@ def extract_pdf_text(pdf_path: str) -> str:
 
     reader = PdfReader(pdf_path)
     return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def extract_pitch_text(filename: str, content_type: str | None, data: bytes) -> str:
+    """Validate and extract uploaded PDF, TXT, or Markdown pitch content."""
+    if not data:
+        raise ValueError("Pitch file is empty")
+    if len(data) > MAX_PITCH_BYTES:
+        raise ValueError("Pitch file exceeds the 10 MB limit")
+    extension = os.path.splitext(filename or "")[1].lower()
+    if content_type not in ALLOWED_PITCH_TYPES and extension not in {".pdf", ".txt", ".md"}:
+        raise ValueError("Pitch must be a PDF, TXT, or Markdown file")
+    if extension == ".pdf" or content_type == "application/pdf":
+        from pypdf import PdfReader
+
+        try:
+            reader = PdfReader(io.BytesIO(data))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as exc:
+            raise ValueError("Pitch PDF could not be parsed") from exc
+    else:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Pitch text must be UTF-8 encoded") from exc
+    if not text.strip():
+        raise ValueError("Pitch contains no extractable text")
+    return text.strip()
 
 
 def load_from_synthetic(profile_path: str) -> FounderRecord:

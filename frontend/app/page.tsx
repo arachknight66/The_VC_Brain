@@ -3,7 +3,6 @@
 import {
   Activity,
   ArrowRight,
-  BarChart3,
   Bell,
   BookOpen,
   Bot,
@@ -16,6 +15,7 @@ import {
   FileText,
   Github,
   Globe2,
+  Linkedin,
   LayoutDashboard,
   Lightbulb,
   Menu,
@@ -27,12 +27,33 @@ import {
   Target,
   TrendingUp,
   Users,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-type View = "dashboard" | "discovery" | "company" | "diligence";
+type View = "dashboard" | "scanner" | "intake" | "discovery" | "company" | "diligence";
+
+type Signal = {
+  signal_id: string;
+  source: string;
+  title: string;
+  source_url: string;
+  summary: string;
+  score: number;
+  observed_at: string;
+};
+
+type FounderResult = {
+  founder_id: string;
+  name: string;
+  company_name: string;
+  founder_score: { value: number };
+  source_evidence: Array<{ source: string; title: string; url: string; confidence: number }>;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_VC_BRAIN_API_URL ?? "http://localhost:8000";
 
 const founders = [
   { name: "Priya Nandakumar", company: "Ridgeline", role: "Developer tools", score: 92, stage: "Seed", initials: "PN", tone: "indigo", signal: "+8 this week" },
@@ -45,6 +66,8 @@ const founders = [
 
 const navItems = [
   { id: "dashboard" as View, label: "Dashboard", icon: LayoutDashboard },
+  { id: "scanner" as View, label: "Signal Scanner", icon: Zap },
+  { id: "intake" as View, label: "Pitch Intake", icon: Upload },
   { id: "discovery" as View, label: "Discovery", icon: Search },
   { id: "company" as View, label: "Companies", icon: BriefcaseBusiness },
   { id: "diligence" as View, label: "Diligence", icon: ShieldCheck },
@@ -52,6 +75,8 @@ const navItems = [
 
 const viewTitles: Record<View, string> = {
   dashboard: "Intelligence Overview",
+  scanner: "Signal Scanner",
+  intake: "Pitch Intake",
   discovery: "Founder Discovery",
   company: "Company Intelligence",
   diligence: "Diligence Workspace",
@@ -150,8 +175,8 @@ function Dashboard({ onView }: { onView: (view: View) => void }) {
           <p>Your pipeline gained <strong>14 high-confidence signals</strong> since Friday.</p>
         </div>
         <div className="hero-actions">
-          <button className="secondary-button"><Plus size={16} /> Add company</button>
-          <button className="primary-button" onClick={() => onView("discovery")}><Search size={16} /> Discover founders</button>
+          <button className="secondary-button" onClick={() => onView("intake")}><Plus size={16} /> Add company</button>
+          <button className="primary-button" onClick={() => onView("scanner")}><Search size={16} /> Scan live signals</button>
         </div>
       </section>
 
@@ -360,11 +385,151 @@ function Diligence() {
   );
 }
 
+const scannerSources = [
+  { id: "github", label: "GitHub", icon: Github },
+  { id: "x", label: "X", icon: Activity },
+  { id: "substack", label: "Substack", icon: BookOpen },
+  { id: "devpost", label: "Devpost", icon: Zap },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+];
+
+function SignalScanner() {
+  const [query, setQuery] = useState("AI infrastructure");
+  const [selected, setSelected] = useState(scannerSources.map((source) => source.id));
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggleSource = (source: string) => {
+    setSelected((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source]);
+  };
+
+  const runScan = async () => {
+    if (!query.trim() || !selected.length) {
+      setError("Enter a query and select at least one source.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE}/scanners/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, sources: selected, max_results: 8 }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Scanner run failed.");
+      setSignals(data.signals ?? []);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The scanner API is unavailable.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="view workflow-view">
+      <section className="workflow-hero">
+        <div><span className="section-kicker"><Zap size={14} /> Stage 0 sourcing</span><h1>Find public founder signals.</h1><p>Run GitHub directly and search public X, Substack, Devpost, and LinkedIn pages through Tavily. Every result is source-tagged and persisted.</p></div>
+        <span className="api-status"><i /> Connected to VC Brain API</span>
+      </section>
+      <article className="panel workflow-panel">
+        <label className="field-label">Thesis keyword, founder, or company</label>
+        <div className="scanner-query">
+          <label><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. agent infrastructure, climate fintech" /></label>
+          <button className="primary-button" onClick={runScan} disabled={loading}>{loading ? "Scanning…" : "Run scan"} <ArrowRight size={15} /></button>
+        </div>
+        <div className="source-selector">
+          {scannerSources.map(({ id, label, icon: Icon }) => (
+            <button key={id} className={selected.includes(id) ? "selected" : ""} onClick={() => toggleSource(id)}><Icon size={15} /> {label}{selected.includes(id) && <Check size={13} />}</button>
+          ))}
+        </div>
+        {error && <p className="workflow-error">{error}</p>}
+      </article>
+      <div className="results-bar">
+        <div><strong>{signals.length} persisted signals</strong><span> ranked by source confidence and activity</span></div>
+      </div>
+      <section className="signal-results">
+        {!signals.length && !loading && <div className="empty-state"><Search size={24} /><strong>No scan results yet</strong><p>Choose sources and run a query to populate the live signal feed.</p></div>}
+        {signals.map((signal) => (
+          <article className="panel signal-card" key={signal.signal_id}>
+            <span className={`source-mark ${signal.source}`}>{signal.source === "github" ? <Github size={16} /> : signal.source === "linkedin" ? <Linkedin size={16} /> : <Globe2 size={16} />}</span>
+            <div><div className="signal-title"><span>{signal.source}</span><strong>{Math.round(signal.score)} confidence</strong></div><h2>{signal.title}</h2><p>{signal.summary || "Public source discovered without an extractable summary."}</p><a href={signal.source_url} target="_blank" rel="noreferrer">Inspect source <ArrowRight size={13} /></a></div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function PitchIntake() {
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState<FounderResult | null>(null);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) {
+      setStatus("error");
+      setMessage("Select a PDF, TXT, or Markdown pitch file.");
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    form.set("pitch", file);
+    setStatus("loading");
+    setMessage("");
+    setResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/founders/inbound/upload`, { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Pitch processing failed.");
+      setResult(data);
+      setStatus("success");
+      setMessage("Founder created, enriched, analyzed, and saved.");
+    } catch (reason) {
+      setStatus("error");
+      setMessage(reason instanceof Error ? reason.message : "The intake API is unavailable.");
+    }
+  };
+
+  return (
+    <div className="view workflow-view">
+      <section className="workflow-hero">
+        <div><span className="section-kicker"><Upload size={14} /> Inbound activation</span><h1>Turn a pitch into an investment record.</h1><p>Upload a pitch and minimal founder context. The backend extracts the deck, checks public LinkedIn evidence, runs the analysis pipeline, and persists the founder.</p></div>
+      </section>
+      <div className="intake-layout">
+        <form className="panel intake-form" onSubmit={submit}>
+          <div className="form-grid">
+            <label><span>Founder name</span><input name="name" required maxLength={160} placeholder="Priya Nandakumar" /></label>
+            <label><span>Company name</span><input name="company_name" required maxLength={200} placeholder="Ridgeline" /></label>
+            <label><span>LinkedIn profile</span><input name="linkedin_url" type="url" placeholder="https://linkedin.com/in/…" /></label>
+            <label><span>GitHub handle</span><input name="github_handle" placeholder="priyanandakumar" /></label>
+            <label><span>Sector</span><input name="sector" placeholder="AI infrastructure" /></label>
+            <label><span>Stage</span><input name="stage" placeholder="Seed" /></label>
+            <label className="full-field"><span>Geography</span><input name="geography" placeholder="United States" /></label>
+          </div>
+          <label className={`upload-zone ${file ? "has-file" : ""}`}>
+            <Upload size={25} /><strong>{file ? file.name : "Choose pitch deck"}</strong><span>PDF, TXT, or Markdown · maximum 10 MB</span>
+            <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <button className="primary-button wide intake-submit" disabled={status === "loading"}>{status === "loading" ? "Running intelligence pipeline…" : "Upload and analyze"} <ArrowRight size={15} /></button>
+          {message && <p className={`workflow-message ${status}`}>{message}</p>}
+        </form>
+        <aside className="intake-rail">
+          <article className="panel process-card"><span className="section-kicker"><Bot size={14} /> Processing path</span>{["Secure pitch extraction", "Founder & company creation", "Public LinkedIn evidence", "Entity and thesis analysis", "Score, memo, and persistence"].map((step, index) => <div key={step}><span>{index + 1}</span><p>{step}</p></div>)}</article>
+          {result && <article className="panel result-card"><span className="metric-icon green"><Check size={18} /></span><small>Analysis complete</small><h2>{result.company_name}</h2><p>{result.name}</p><strong>{Math.round(result.founder_score.value)}<em>/100</em></strong><span>{result.source_evidence.filter((item) => item.source === "linkedin").length} LinkedIn evidence result(s)</span></article>}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (view: View) => void }) {
   const [query, setQuery] = useState("");
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); open ? onClose() : undefined; }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && open) { event.preventDefault(); onClose(); }
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
@@ -372,6 +537,8 @@ function SearchDialog({ open, onClose, onSelect }: { open: boolean; onClose: () 
   }, [onClose, open]);
   if (!open) return null;
   const suggestions = [
+    { title: "Scan GitHub, X, Substack, Devpost, and LinkedIn", detail: "Live signal scanner", view: "scanner" as View },
+    { title: "Upload a founder pitch deck", detail: "Inbound activation", view: "intake" as View },
     { title: "Find founders with strong GitHub momentum", detail: "Search Discovery", view: "discovery" as View },
     { title: "Open Ridgeline intelligence profile", detail: "Company analysis", view: "company" as View },
     { title: "Review unverified claims", detail: "Diligence workspace", view: "diligence" as View },
@@ -408,6 +575,8 @@ export default function Home() {
       <div className="workspace">
         <Topbar view={view} onMenu={() => setNavOpen(true)} onSearch={() => setSearchOpen(true)} />
         {view === "dashboard" && <Dashboard onView={setView} />}
+        {view === "scanner" && <SignalScanner />}
+        {view === "intake" && <PitchIntake />}
         {view === "discovery" && <Discovery onCompany={() => setView("company")} />}
         {view === "company" && <Company onDiligence={() => setView("diligence")} />}
         {view === "diligence" && <Diligence />}

@@ -24,6 +24,7 @@ from agents import (
     entity_resolution_agent,
     founder_axis_agent,
     idea_vs_market_agent,
+    linkedin_agent,
     market_axis_agent,
     memo_agent,
     sourcing_agent,
@@ -37,6 +38,7 @@ from utils import openai_client, tavily_client
 
 
 def run_pipeline(record: FounderRecord, store: FounderStore) -> FounderRecord:
+    linkedin_agent.run(record)
     entity_resolution_agent.run(record)
     thesis_matching_agent.run(record)
 

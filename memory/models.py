@@ -115,6 +115,23 @@ class TrustClaim:
 
 
 @dataclass
+class SourceEvidence:
+    source: str
+    title: str
+    url: str
+    content: str
+    collected_at: str = field(default_factory=now_iso)
+    confidence: float = 0.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict) -> "SourceEvidence":
+        return SourceEvidence(**d)
+
+
+@dataclass
 class Timing:
     signal_detected_at: Optional[str] = None
     application_triggered_at: Optional[str] = None
@@ -154,6 +171,7 @@ class FounderRecord:
     axis_scores: dict[str, AxisScore] = field(default_factory=dict)
     build_evidence: BuildEvidence = field(default_factory=BuildEvidence)
     trust_claims: list[TrustClaim] = field(default_factory=list)
+    source_evidence: list[SourceEvidence] = field(default_factory=list)
     memo: dict[str, Any] = field(default_factory=dict)
     adversarial_view: dict[str, Any] = field(default_factory=dict)
     timing: Timing = field(default_factory=Timing)
@@ -177,6 +195,7 @@ class FounderRecord:
             "axis_scores": {k: v.to_dict() for k, v in self.axis_scores.items()},
             "build_evidence": self.build_evidence.to_dict(),
             "trust_claims": [c.to_dict() for c in self.trust_claims],
+            "source_evidence": [e.to_dict() for e in self.source_evidence],
             "memo": self.memo,
             "adversarial_view": self.adversarial_view,
             "timing": self.timing.to_dict(),
@@ -199,6 +218,7 @@ class FounderRecord:
             axis_scores={k: AxisScore.from_dict(v) for k, v in d.get("axis_scores", {}).items()},
             build_evidence=BuildEvidence.from_dict(d.get("build_evidence")),
             trust_claims=[TrustClaim.from_dict(c) for c in d.get("trust_claims", [])],
+            source_evidence=[SourceEvidence.from_dict(e) for e in d.get("source_evidence", [])],
             memo=d.get("memo", {}),
             adversarial_view=d.get("adversarial_view", {}),
             timing=Timing.from_dict(d.get("timing")),

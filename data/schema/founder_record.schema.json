@@ -118,6 +118,21 @@
         }
       }
     },
+    "source_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "title", "url", "content", "collected_at", "confidence"],
+        "properties": {
+          "source": { "type": "string" },
+          "title": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "content": { "type": "string" },
+          "collected_at": { "type": "string", "format": "date-time" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
     "memo": { "type": "object" },
     "adversarial_view": { "type": "object" },
     "timing": {
