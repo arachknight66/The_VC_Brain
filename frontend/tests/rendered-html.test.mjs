@@ -36,4 +36,8 @@ test("ships live scanner and pitch-upload API integrations", async () => {
   assert.match(page, /Devpost/);
   assert.match(page, /LinkedIn/);
   assert.match(page, /NEXT_PUBLIC_VC_BRAIN_API_URL/);
+  assert.match(page, /NEXT_PUBLIC_USE_MOCK_DATA/);
+  assert.match(page, /const MOCK_FOUNDERS/);
+  assert.match(page, /const MOCK_SIGNALS/);
+  assert.match(page, /if \(USE_MOCK_DATA\)/);
 });

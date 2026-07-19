@@ -104,6 +104,7 @@ type DashboardSummary = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_VC_BRAIN_API_URL ?? "http://localhost:8000";
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 const EMPTY_SUMMARY: DashboardSummary = {
   founder_records: 0,
@@ -117,6 +118,97 @@ const EMPTY_SUMMARY: DashboardSummary = {
   average_founder_score: 0,
   average_score_confidence: 0,
   average_signal_to_memo_seconds: null,
+};
+
+function createMockFounder({
+  id,
+  name,
+  company,
+  sector,
+  stage,
+  score,
+  confidence,
+  trend,
+}: {
+  id: string;
+  name: string;
+  company: string;
+  sector: string;
+  stage: string;
+  score: number;
+  confidence: number;
+  trend: "improving" | "stable" | "declining";
+}): FounderRecord {
+  return {
+    founder_id: id,
+    name,
+    company_name: company,
+    source_channel: "inbound",
+    screened_out: false,
+    screened_out_reason: null,
+    entity_resolution_confidence: confidence,
+    raw_inputs: { sector, stage, geography: "United States" },
+    founder_score: {
+      value: score,
+      trend,
+      confidence,
+      confidence_basis: "mock_demo_fixture",
+      history: [{ timestamp: "2026-07-14T12:00:00Z", value: score - 4, context: "mock_previous_run" }],
+    },
+    axis_scores: {
+      founder: { rating: "strong", score: Math.min(100, score + 4), trend, rationale: `${name} shows strong founder-axis evidence in the retained demo fixture.` },
+      market: { rating: "bullish", score: Math.max(0, score - 5), trend: "stable", rationale: `${sector} has favorable market signals in the retained demo fixture.` },
+      idea_vs_market: { rating: "resilient", score: Math.max(0, score - 1), trend, rationale: "The idea-vs-market assessment remains resilient under the demo assumptions." },
+    },
+    build_evidence: {
+      tier: "verified_working",
+      signals_checked: ["GitHub repository", "Live product URL"],
+      evidence_log: [{ signal: "Live product URL", found: true, detail: "Demo fixture represents a reachable product.", source_url: "https://example.com" }],
+    },
+    trust_claims: [
+      { claim_text: "Product usage is growing", confidence: 0.9, evidence_category: "known_verified", source: "Mock product analytics", contradiction_flag: false },
+      { claim_text: "Enterprise expansion is repeatable", confidence: 0.62, evidence_category: "statistical_association", source: "Mock customer evidence", contradiction_flag: false },
+    ],
+    source_evidence: [{ source: "linkedin", title: `${name} public profile`, url: "https://www.linkedin.com", confidence: 0.9 }],
+    memo: {
+      company_snapshot: `${company} is a retained demo company in ${sector}, shown only when the mock-data feature flag is enabled.`,
+      investment_hypotheses: ["Founder experience maps to the stated problem.", "Public build evidence supports execution velocity."],
+    },
+    adversarial_view: { bear_case_summary: "The retained mock case still requires customer and market validation." },
+    timing: { elapsed_seconds: 14.2, memo_ready_at: "2026-07-14T12:00:14Z", stage_timings: { entity_resolution: 0.4, scoring: 8.1, memo: 5.7 } },
+  };
+}
+
+// Retained demo fixtures. They are intentionally disabled unless
+// NEXT_PUBLIC_USE_MOCK_DATA=true is supplied at build/runtime startup.
+const MOCK_FOUNDERS: FounderRecord[] = [
+  createMockFounder({ id: "mock-priya", name: "Priya Nandakumar", company: "Ridgeline", sector: "Developer tools", stage: "Seed", score: 92, confidence: 0.92, trend: "improving" }),
+  createMockFounder({ id: "mock-marcus", name: "Marcus Ihediwa", company: "Ledgerly", sector: "Embedded finance", stage: "Pre-seed", score: 84, confidence: 0.81, trend: "improving" }),
+  createMockFounder({ id: "mock-alina", name: "Alina Moroz", company: "NeuroStream", sector: "Healthcare AI", stage: "Series A", score: 88, confidence: 0.87, trend: "improving" }),
+  createMockFounder({ id: "mock-julian", name: "Julian Vance", company: "Conduit Labs", sector: "Climate infrastructure", stage: "Seed", score: 79, confidence: 0.76, trend: "stable" }),
+  createMockFounder({ id: "mock-sana", name: "Sana Jenkins", company: "Fieldnote", sector: "Vertical SaaS", stage: "Pre-seed", score: 76, confidence: 0.73, trend: "improving" }),
+  createMockFounder({ id: "mock-leo", name: "Leo Chen", company: "Onward Robotics", sector: "Robotics", stage: "Seed", score: 81, confidence: 0.79, trend: "stable" }),
+];
+
+const MOCK_SIGNALS: Signal[] = [
+  { signal_id: "mock-signal-github", source: "github", title: "Ridgeline shipped 3 releases", source_url: "https://github.com", summary: "Repository activity increased in the retained demo fixture.", score: 88, observed_at: "2026-07-14T12:00:00Z" },
+  { signal_id: "mock-signal-linkedin", source: "linkedin", title: "NeuroStream expanded its ML team", source_url: "https://www.linkedin.com", summary: "Public hiring evidence is represented by this disabled demo signal.", score: 82, observed_at: "2026-07-14T11:00:00Z" },
+  { signal_id: "mock-signal-devpost", source: "devpost", title: "Conduit Labs demo submission found", source_url: "https://devpost.com", summary: "A public build submission is represented by this disabled demo signal.", score: 77, observed_at: "2026-07-14T10:00:00Z" },
+  { signal_id: "mock-signal-substack", source: "substack", title: "Fieldnote founder published a market thesis", source_url: "https://substack.com", summary: "A founder-authored public research signal is retained for demos.", score: 71, observed_at: "2026-07-14T09:00:00Z" },
+];
+
+const MOCK_SUMMARY: DashboardSummary = {
+  founder_records: MOCK_FOUNDERS.length,
+  active_opportunities: MOCK_FOUNDERS.length,
+  raw_signals: MOCK_SIGNALS.length,
+  memo_ready: MOCK_FOUNDERS.length,
+  high_confidence_scores: MOCK_FOUNDERS.filter((founder) => founder.founder_score.confidence >= 0.75).length,
+  verified_builds: MOCK_FOUNDERS.filter((founder) => founder.build_evidence.tier === "verified_working").length,
+  verified_claims: MOCK_FOUNDERS.reduce((total, founder) => total + founder.trust_claims.filter((claim) => claim.evidence_category === "known_verified").length, 0),
+  unverified_claims: 0,
+  average_founder_score: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.value, 0) / MOCK_FOUNDERS.length * 10) / 10,
+  average_score_confidence: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.confidence, 0) / MOCK_FOUNDERS.length * 100) / 100,
+  average_signal_to_memo_seconds: 14.2,
 };
 
 const avatarTones = ["indigo", "orange", "cyan", "violet", "green", "blue"];
@@ -677,6 +769,15 @@ export default function Home() {
     const controller = new AbortController();
     const loadData = async () => {
       setDataLoading(true);
+      if (USE_MOCK_DATA) {
+        setFounders(MOCK_FOUNDERS);
+        setSignals(MOCK_SIGNALS);
+        setSummary(MOCK_SUMMARY);
+        setSelectedFounderId((current) => current && MOCK_FOUNDERS.some((founder) => founder.founder_id === current) ? current : MOCK_FOUNDERS[0].founder_id);
+        setDataError("");
+        setDataLoading(false);
+        return;
+      }
       try {
         const [foundersResponse, signalsResponse, summaryResponse] = await Promise.all([
           fetch(`${API_BASE}/founders`, { signal: controller.signal }),
