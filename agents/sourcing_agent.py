@@ -92,6 +92,11 @@ def extract_pitch_text(filename: str, content_type: str | None, data: bytes) -> 
     return text.strip()
 
 
+def extract_pdf_text_from_bytes(data: bytes) -> str:
+    """Compatibility helper for the Streamlit application page."""
+    return extract_pitch_text("pitch.pdf", "application/pdf", data)
+
+
 def load_from_synthetic(profile_path: str) -> FounderRecord:
     """Loads a synthetic founder profile JSON as if it were a scraped outbound signal."""
     with open(profile_path) as f:
