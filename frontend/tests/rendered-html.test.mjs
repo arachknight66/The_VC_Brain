@@ -85,6 +85,7 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   const workspaceRoute = await readFile(new URL("../app/api/workspace/route.ts", import.meta.url), "utf8");
   const proxyRoute = await readFile(new URL("../app/api/vc/[...path]/route.ts", import.meta.url), "utf8");
   const database = await readFile(new URL("../db/index.ts", import.meta.url), "utf8");
+  const schemaBootstrap = await readFile(new URL("../db/ensure-schema.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
   const vercel = JSON.parse(await readFile(new URL("../../vercel.json", import.meta.url), "utf8"));
   assert.match(page, /getAppUser/);
@@ -122,6 +123,9 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(schema, /auditEvents/);
   assert.match(database, /drizzle-orm\/postgres-js/);
   assert.match(database, /DATABASE_URL/);
+  assert.match(workspaceRoute, /ensureWorkspaceSchema/);
+  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS organizations/);
+  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS workspace_states/);
 });
 
 test("ships the multi-reasoning investor chat box", async () => {
