@@ -1,6 +1,7 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { getAppUser } from "../../app-auth";
 import { getDb } from "../../../db";
+import { ensureWorkspaceSchema } from "../../../db/ensure-schema";
 import { auditEvents, memberships, organizations, users, workspaceStates } from "../../../db/schema";
 
 const ORGANIZATION_ID = "vc-brain-default";
@@ -11,6 +12,7 @@ async function requireMembership() {
   const identity = await getAppUser();
   if (!identity) return null;
 
+  await ensureWorkspaceSchema();
   const db = getDb();
   const email = identity.email.trim().toLowerCase();
   const userId = `user:${email}`;
