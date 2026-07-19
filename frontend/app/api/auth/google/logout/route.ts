@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import {
   authCookieOptions,
   GOOGLE_NONCE_COOKIE,
@@ -10,7 +10,10 @@ import {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const jar = await cookies();
+  const response = NextResponse.redirect(new URL("/", requestUrl.origin), {
+    status: 303,
+    headers: { "Cache-Control": "no-store" },
+  });
   const expired = authCookieOptions(request, 0);
   [
     GOOGLE_SESSION_COOKIE,
@@ -18,6 +21,6 @@ export async function GET(request: Request) {
     GOOGLE_VERIFIER_COOKIE,
     GOOGLE_NONCE_COOKIE,
     GOOGLE_RETURN_TO_COOKIE,
-  ].forEach((name) => jar.set(name, "", expired));
-  return Response.redirect(new URL("/", requestUrl.origin));
+  ].forEach((name) => response.cookies.set(name, "", expired));
+  return response;
 }
