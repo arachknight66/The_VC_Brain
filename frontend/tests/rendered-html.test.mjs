@@ -78,7 +78,7 @@ test("includes priority-three decision intelligence", async () => {
   assert.match(page, /getScenarioScore/);
   assert.match(page, /Stress-test conviction/);
   assert.match(page, /recordICDecision/);
-  assert.match(page, /immutable decision record/);
+  assert.match(page, /device-local decision record/);
   assert.match(page, /getPortfolioAlerts/);
   assert.match(page, /Material change queue/);
   assert.match(page, /Decision memory/);
