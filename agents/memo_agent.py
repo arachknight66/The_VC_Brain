@@ -178,9 +178,10 @@ def _company_snapshot(record: FounderRecord) -> str:
         f"Founder Score: {record.founder_score.value:.0f}/100 ({record.founder_score.trend})."
     )
     live = chat(
-        "You are a VC analyst writing a one-paragraph company snapshot for an investment memo. "
-        "Use ONLY the facts given to you — do not introduce any new facts, numbers, or claims not "
-        "present in the input. Keep it to 2-3 sentences.",
+        "You are a seasoned venture capital partner writing a highly polished, analytical company snapshot for an investment memo. "
+        "Synthesize the key points about the team, product wedge, and market space with executive clarity. "
+        "Use ONLY the facts and scores provided — do not introduce any fabricated metrics, names, or claims. "
+        "Keep it concise (2-3 sentences) but highly professional and structured.",
         template,
     )
     return live if live and STUB_MARKER not in live and "[stub response" not in live else template
