@@ -1,21 +1,11 @@
-import { getChatGPTUser, type ChatGPTUser } from "./chatgpt-auth";
+import { getGoogleUser, type GoogleUser } from "./google-auth";
 
-export type AppUser = ChatGPTUser & {
+export type AppUser = GoogleUser & {
   authenticated: boolean;
 };
 
 export async function getAppUser(): Promise<AppUser | null> {
-  const user = await getChatGPTUser();
+  const user = await getGoogleUser();
   if (user) return { ...user, authenticated: true };
-
-  if (process.env.NODE_ENV === "development") {
-    return {
-      displayName: "Local Developer",
-      email: "developer@local.vcbrain",
-      fullName: "Local Developer",
-      authenticated: false,
-    };
-  }
-
   return null;
 }

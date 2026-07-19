@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("server-renders the OAuth sign-in boundary for anonymous users", async () => {
+test("server-renders the Google OAuth sign-in boundary for anonymous users", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /The VC Brain/);
   assert.match(page, /Sign in to your investment operating system/);
-  assert.match(page, /Sign in with ChatGPT/);
-  assert.match(page, /OAuth/);
+  assert.match(page, /Continue with Google/);
+  assert.match(page, /api\/auth\/google\/start/);
   assert.match(page, /dynamic = "force-dynamic"/);
 });
 
@@ -77,12 +77,24 @@ test("includes priority-three decision intelligence", async () => {
 
 test("enforces authenticated multi-user workspace persistence", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const appAuth = await readFile(new URL("../app/app-auth.ts", import.meta.url), "utf8");
+  const googleAuth = await readFile(new URL("../app/google-auth.ts", import.meta.url), "utf8");
+  const authStart = await readFile(new URL("../app/api/auth/google/start/route.ts", import.meta.url), "utf8");
+  const authCallback = await readFile(new URL("../app/api/auth/google/callback/route.ts", import.meta.url), "utf8");
   const workspaceRoute = await readFile(new URL("../app/api/workspace/route.ts", import.meta.url), "utf8");
   const proxyRoute = await readFile(new URL("../app/api/vc/[...path]/route.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
   const hosting = JSON.parse(await readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"));
   assert.match(page, /getAppUser/);
-  assert.match(page, /chatGPTSignInPath/);
+  assert.match(appAuth, /getGoogleUser/);
+  assert.match(googleAuth, /createRemoteJWKSet/);
+  assert.match(googleAuth, /GOOGLE_ALLOWED_EMAILS/);
+  assert.match(googleAuth, /GOOGLE_WORKSPACE_DOMAIN/);
+  assert.match(googleAuth, /email_verified/);
+  assert.match(authStart, /code_challenge_method/);
+  assert.match(authStart, /S256/);
+  assert.match(authCallback, /Invalid Google login state/);
+  assert.match(authCallback, /verifyGoogleIdToken/);
   assert.match(workspaceRoute, /Authentication required/);
   assert.match(workspaceRoute, /Viewer access is read-only/);
   assert.match(workspaceRoute, /expectedVersion/);

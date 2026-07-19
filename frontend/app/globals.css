@@ -760,6 +760,8 @@ button:disabled {
 .auth-card h1 { margin: 12px 0 13px; font-size: clamp(29px, 5vw, 42px); line-height: 1.04; }
 .auth-card p { margin: 0; color: #5c6a7d; font-size: 14px; line-height: 1.65; }
 .auth-button { min-height: 48px; margin: 26px 0 14px; padding-inline: 20px; text-decoration: none; }
+.google-g { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; background: white; color: #4285f4; font-weight: 800; }
+.auth-error { width: 100%; margin-top: 18px !important; padding: 11px 13px; border: 1px solid #efc4bc; border-radius: 8px; background: #fff4f1; color: #9c402d !important; }
 .auth-card > small { color: var(--muted); line-height: 1.5; }
 
 .api-error-banner {
