@@ -4,6 +4,7 @@ import {
   GOOGLE_FLOW_TTL_SECONDS,
   GOOGLE_NONCE_COOKIE,
   GOOGLE_RETURN_TO_COOKIE,
+  GOOGLE_SESSION_COOKIE,
   GOOGLE_STATE_COOKIE,
   GOOGLE_VERIFIER_COOKIE,
   googleOAuthConfigured,
@@ -31,6 +32,10 @@ export async function GET(request: Request) {
   const redirectUri = `${requestUrl.origin}/api/auth/google/callback`;
   const jar = await cookies();
   const options = authCookieOptions(request, GOOGLE_FLOW_TTL_SECONDS);
+  // A new OAuth flow is an account switch. Clear the existing app session so
+  // a rejected/cancelled choice cannot silently drop the user back into the
+  // previous Google account.
+  jar.set(GOOGLE_SESSION_COOKIE, "", authCookieOptions(request, 0));
   jar.set(GOOGLE_STATE_COOKIE, state, options);
   jar.set(GOOGLE_NONCE_COOKIE, nonce, options);
   jar.set(GOOGLE_VERIFIER_COOKIE, verifier, options);

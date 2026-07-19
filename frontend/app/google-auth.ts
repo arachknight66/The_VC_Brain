@@ -20,6 +20,17 @@ const GOOGLE_JWKS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/oauth2/v3/certs"),
 );
 
+function environmentList(value: string | undefined) {
+  return (value || "")
+    .split(/[\s,;]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function allowAnyGoogleAccount() {
+  return process.env.GOOGLE_ALLOW_ANY_ACCOUNT?.trim().toLowerCase() === "true";
+}
+
 function sessionSecret() {
   const value = process.env.AUTH_SECRET?.trim();
   if (value && value.length >= 32) return new TextEncoder().encode(value);
@@ -31,7 +42,8 @@ function sessionSecret() {
 
 export function googleOAuthConfigured() {
   const membershipPolicyConfigured = Boolean(
-    process.env.GOOGLE_WORKSPACE_DOMAIN?.trim() ||
+    allowAnyGoogleAccount() ||
+      process.env.GOOGLE_WORKSPACE_DOMAIN?.trim() ||
       process.env.GOOGLE_ALLOWED_EMAILS?.trim() ||
       process.env.NODE_ENV === "development",
   );
@@ -125,27 +137,25 @@ export async function getGoogleUser(): Promise<GoogleUser | null> {
 
 export function assertGoogleUserAllowed(email: string) {
   const normalized = email.trim().toLowerCase();
-  const allowedEmails = new Set(
-    (process.env.GOOGLE_ALLOWED_EMAILS || "")
-      .split(",")
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean),
+  if (allowAnyGoogleAccount()) return;
+  const allowedEmails = new Set(environmentList(process.env.GOOGLE_ALLOWED_EMAILS));
+  const allowedDomains = environmentList(process.env.GOOGLE_WORKSPACE_DOMAIN).map(
+    (domain) => domain.replace(/^@/, ""),
   );
-  const allowedDomain = (process.env.GOOGLE_WORKSPACE_DOMAIN || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^@/, "");
-  const domainMatches =
-    Boolean(allowedDomain) && normalized.endsWith(`@${allowedDomain}`);
+  const domainMatches = allowedDomains.some((domain) =>
+    normalized.endsWith(`@${domain}`),
+  );
   if (allowedEmails.has(normalized) || domainMatches) return;
   if (
     process.env.NODE_ENV === "development" &&
     !allowedEmails.size &&
-    !allowedDomain
+    !allowedDomains.length
   ) {
     return;
   }
-  throw new Error("This Google account is not approved for this workspace");
+  throw new Error(
+    `The Google account ${normalized} is not approved for this workspace`,
+  );
 }
 
 export async function verifyGoogleIdToken(idToken: string, nonce: string) {

@@ -91,11 +91,18 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(googleAuth, /createRemoteJWKSet/);
   assert.match(googleAuth, /GOOGLE_ALLOWED_EMAILS/);
   assert.match(googleAuth, /GOOGLE_WORKSPACE_DOMAIN/);
+  assert.match(googleAuth, /GOOGLE_ALLOW_ANY_ACCOUNT/);
+  assert.match(googleAuth, /split\(\/\[\\s,;\]\+\//);
   assert.match(googleAuth, /email_verified/);
   assert.match(authStart, /code_challenge_method/);
   assert.match(authStart, /S256/);
+  assert.match(authStart, /GOOGLE_SESSION_COOKIE/);
+  assert.match(authStart, /select_account/);
   assert.match(authCallback, /Invalid Google login state/);
+  assert.match(authCallback, /error_description/);
   assert.match(authCallback, /verifyGoogleIdToken/);
+  assert.match(page, /Continue with Google/);
+  assert.match(await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8"), /Switch Google account/);
   assert.match(workspaceRoute, /Authentication required/);
   assert.match(workspaceRoute, /Viewer access is read-only/);
   assert.match(workspaceRoute, /expectedVersion/);

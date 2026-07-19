@@ -40,8 +40,15 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get("code");
 
   try {
-    if (requestUrl.searchParams.get("error")) {
-      throw new Error("Google sign-in was cancelled");
+    const oauthError = requestUrl.searchParams.get("error");
+    if (oauthError) {
+      const description = requestUrl.searchParams.get("error_description");
+      throw new Error(
+        description ||
+          (oauthError === "access_denied"
+            ? "Google sign-in was cancelled or this account does not have access"
+            : `Google sign-in failed: ${oauthError}`),
+      );
     }
     if (!state || !receivedState || state !== receivedState) {
       throw new Error("Invalid Google login state");
