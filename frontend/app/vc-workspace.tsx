@@ -24,11 +24,14 @@ import {
   ListChecks,
   Menu,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
   TrendingUp,
   Upload,
+  Wifi,
+  WifiOff,
   X,
   Zap,
 } from "lucide-react";
@@ -98,6 +101,7 @@ type ClaimReview = { status: ClaimReviewStatus; reviewer: string; updatedAt: str
 type DiligenceTask = { id: string; founderId: string; title: string; owner: string; due: string; status: "open" | "in_progress" | "done" };
 type AuditEvent = { id: string; founderId: string; actor: string; action: string; timestamp: string };
 type MemoReview = { status: "draft" | "in_review" | "approved"; version: number; reviewer: string; updatedAt: string; note: string };
+type Toast = { id: string; message: string; tone: "success" | "info" | "warning" };
 type WorkspaceState = {
   companies: Record<string, CompanyWorkflow>;
   claimReviews: Record<string, ClaimReview>;
@@ -197,16 +201,27 @@ function Sidebar({ view, onNavigate, open, onClose, inboxCount, diligenceCount }
   </aside></>;
 }
 
-function Topbar({ view, onMenu, onQuickActions }: { view: View; onMenu: () => void; onQuickActions: () => void }) {
-  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions}><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><span className="avatar blue small">AK</span></div></header>;
+function Topbar({ view, onMenu, onQuickActions, online }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean }) {
+  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><span className={`connection-state ${online ? "online" : "offline"}`} title={online ? "Connected" : "Offline"}>{online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{online ? "Connected" : "Offline"}</span></span><span className="avatar blue small">AK</span></div></header>;
 }
 
-function Overview({ founders, signals, summary, workflow, onOpen, onNavigate, loading, error }: { founders: FounderRecord[]; signals: Signal[]; summary: DashboardSummary; workflow: WorkspaceState; onOpen: (id: string) => void; onNavigate: (view: View) => void; loading: boolean; error: string }) {
+function LoadingWorkspace() {
+  return <div className="view loading-workspace" role="status" aria-live="polite"><span className="sr-only">Loading investment workspace</span><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /><div className="loading-grid"><div className="panel skeleton-panel" /><div className="panel skeleton-panel short" /></div></div>;
+}
+
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <div className="api-error-banner" role="alert"><AlertTriangle size={18} /><div><strong>Workspace data is unavailable</strong><span>{message}</span></div><button className="secondary-button" onClick={onRetry}><RefreshCw size={14} /> Retry</button></div>;
+}
+
+function ToastRegion({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string) => void }) {
+  return <div className="toast-region" aria-live="polite" aria-atomic="false">{toasts.map((toast) => <div className={`toast ${toast.tone}`} role="status" key={toast.id}><CheckCircle2 size={17} /><span>{toast.message}</span><button onClick={() => dismiss(toast.id)} aria-label="Dismiss notification"><X size={14} /></button></div>)}</div>;
+}
+
+function Overview({ founders, signals, summary, workflow, onOpen, onNavigate }: { founders: FounderRecord[]; signals: Signal[]; summary: DashboardSummary; workflow: WorkspaceState; onOpen: (id: string) => void; onNavigate: (view: View) => void }) {
   const decisionQueue = founders.filter((founder) => ["Partner review", "Diligence", "IC"].includes((workflow.companies[founder.founder_id] ?? defaultWorkflow(founder)).stage)).slice(0, 5);
   const blocked = founders.filter((founder) => getDecision(founder).label === "Hold").length;
   return <div className="view">
-    <section className="hero-row"><div><span className="section-kicker"><Sparkles size={14} /> Morning investment brief</span><h1>{loading ? "Loading decision queue…" : `${decisionQueue.length} decisions need attention.`}</h1><p>{blocked} companies are blocked by evidence gaps; {summary.unverified_claims} claims require review.</p></div><div className="hero-actions"><button className="secondary-button" onClick={() => onNavigate("intake")}><Upload size={16} /> Add pitch</button><button className="primary-button" onClick={() => onNavigate("inbox")}><Inbox size={16} /> Review inbox</button></div></section>
-    {error && <p className="workflow-error">{error}</p>}
+    <section className="hero-row"><div><span className="section-kicker"><Sparkles size={14} /> Morning investment brief</span><h1>{decisionQueue.length} decisions need attention.</h1><p>{blocked} companies are blocked by evidence gaps; {summary.unverified_claims} claims require review.</p></div><div className="hero-actions"><button className="secondary-button" onClick={() => onNavigate("intake")}><Upload size={16} /> Add pitch</button><button className="primary-button" onClick={() => onNavigate("inbox")}><Inbox size={16} /> Review inbox</button></div></section>
     <section className="brief-grid">
       <article className="panel decision-queue"><div className="panel-heading"><div><h2>Decision queue</h2><p>Ordered by stage and evidence risk</p></div><button className="text-button" onClick={() => onNavigate("pipeline")}>Open pipeline <ArrowRight size={14} /></button></div>
         {decisionQueue.map((founder) => { const company = workflow.companies[founder.founder_id] ?? defaultWorkflow(founder); const decision = getDecision(founder); return <button className="queue-row" onClick={() => onOpen(founder.founder_id)} key={founder.founder_id}><Avatar founder={founder} /><span><strong>{founder.company_name}</strong><small>{company.stage} · {company.owner}</small></span><span className={`decision-chip ${decision.tone}`}>{decision.label}</span><span className="queue-risk">{decision.reason}</span><ArrowRight size={15} /></button>; })}
@@ -221,13 +236,14 @@ function Overview({ founders, signals, summary, workflow, onOpen, onNavigate, lo
   </div>;
 }
 
-function SignalInbox({ persistedSignals, onDataChanged, onIntake }: { persistedSignals: Signal[]; onDataChanged: () => void; onIntake: () => void }) {
+function SignalInbox({ persistedSignals, onDataChanged, onIntake, notify }: { persistedSignals: Signal[]; onDataChanged: () => void; onIntake: () => void; notify: (message: string, tone?: Toast["tone"]) => void }) {
   const [query, setQuery] = useState("AI infrastructure");
   const [sources, setSources] = useState(["github", "linkedin", "substack"]);
   const [preview, setPreview] = useState<Signal[]>([]);
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const scannerSources = ["github", "x", "substack", "devpost", "linkedin"];
 
@@ -244,11 +260,19 @@ function SignalInbox({ persistedSignals, onDataChanged, onIntake }: { persistedS
   };
 
   const commitReview = async () => {
-    const response = await fetch(`${API_BASE}/signals/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signals: preview, accepted_ids: [...accepted] }) });
-    const data = await response.json();
-    if (!response.ok) return setMessage(data.detail ?? "Could not save reviewed signals.");
-    setMessage(`${data.accepted} accepted; ${data.dismissed} dismissed. Only accepted signals were persisted.`);
-    setPreview([]); setAccepted(new Set()); setDismissed(new Set()); onDataChanged();
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE}/signals/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ signals: preview, accepted_ids: [...accepted] }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "Could not save reviewed signals.");
+      setMessage(`${data.accepted} accepted; ${data.dismissed} dismissed. Only accepted signals were persisted.`);
+      setPreview([]); setAccepted(new Set()); setDismissed(new Set()); onDataChanged();
+      notify(`${data.accepted} signals added to institutional research.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save reviewed signals.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const setReview = (id: string, outcome: "accept" | "dismiss") => {
@@ -258,13 +282,13 @@ function SignalInbox({ persistedSignals, onDataChanged, onIntake }: { persistedS
 
   return <div className="view">
     <section className="workflow-hero"><div><span className="section-kicker"><Inbox size={14} /> Research inbox</span><h1>Review signals before they enter the system.</h1><p>Preview public-source matches, inspect the scoring dimensions, then accept only evidence worth retaining.</p></div><button className="secondary-button" onClick={onIntake}><Upload size={15} /> Pitch intake</button></section>
-    <article className="panel workflow-panel"><span className="field-label">Thesis, founder, or company query</span><div className="scanner-query"><label><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} /></label><button className="primary-button" disabled={loading} onClick={runPreview}>{loading ? "Scanning…" : "Preview results"} <ArrowRight size={15} /></button></div><div className="source-selector">{scannerSources.map((source) => <button key={source} aria-pressed={sources.includes(source)} className={sources.includes(source) ? "selected" : ""} onClick={() => setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source])}>{labelize(source)}{sources.includes(source) && <Check size={13} />}</button>)}</div>{message && <p className="workflow-message">{message}</p>}</article>
-    <div className="review-toolbar"><div><strong>{preview.length ? `${preview.length} preview results` : `${persistedSignals.length} persisted signals`}</strong><span>{preview.length ? "Review every item before saving" : "Run a query to create a review batch"}</span></div>{preview.length > 0 && <button className="primary-button" disabled={accepted.size + dismissed.size !== preview.length} onClick={commitReview}>Complete review <CheckCircle2 size={15} /></button>}</div>
+    <article className="panel workflow-panel" aria-busy={loading}><span className="field-label">Thesis, founder, or company query</span><div className="scanner-query"><label><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runPreview(); }} aria-label="Signal search query" /></label><button className="primary-button" disabled={loading || saving} onClick={runPreview}>{loading ? <><RefreshCw className="spin" size={15} /> Scanning…</> : <>Preview results <ArrowRight size={15} /></>}</button></div><div className="source-selector" aria-label="Scanner sources">{scannerSources.map((source) => <button key={source} aria-pressed={sources.includes(source)} className={sources.includes(source) ? "selected" : ""} onClick={() => setSources((current) => current.includes(source) ? current.filter((item) => item !== source) : [...current, source])}>{labelize(source)}{sources.includes(source) && <Check size={13} />}</button>)}</div>{message && <p className="workflow-message" role="status">{message}</p>}</article>
+    <div className="review-toolbar"><div><strong>{preview.length ? `${preview.length} preview results` : `${persistedSignals.length} persisted signals`}</strong><span>{preview.length ? `${accepted.size} accepted · ${dismissed.size} dismissed · ${preview.length - accepted.size - dismissed.size} remaining` : "Run a query to create a review batch"}</span></div>{preview.length > 0 && <button className="primary-button" disabled={accepted.size + dismissed.size !== preview.length || saving} onClick={commitReview}>{saving ? <><RefreshCw className="spin" size={15} /> Saving…</> : <>Complete review <CheckCircle2 size={15} /></>}</button>}</div>
     <section className="signal-review-list">{preview.map((signal) => { const dimensions = getSignalDimensions(signal); const outcome = accepted.has(signal.signal_id) ? "accepted" : dismissed.has(signal.signal_id) ? "dismissed" : "pending"; return <article className={`panel signal-review-row ${outcome}`} key={signal.signal_id}><div className="signal-review-main"><span className="source-mark"><Globe2 size={16} /></span><div><span className="source-label">{labelize(signal.source)} · Observed {formatDate(signal.observed_at)}</span><h2>{signal.title}</h2><p>{signal.summary || "No extractable public summary."}</p><a href={signal.source_url} target="_blank" rel="noreferrer">Inspect source <ArrowRight size={13} /></a></div></div><div className="dimension-grid">{Object.entries(dimensions).map(([label, value]) => <div key={label}><span>{labelize(label)}</span><strong>{value}</strong><i><b style={{ width: `${value}%` }} /></i></div>)}</div><div className="review-actions"><button className={outcome === "accepted" ? "selected accept" : "accept"} onClick={() => setReview(signal.signal_id, "accept")}><Check size={15} /> Accept</button><button className={outcome === "dismissed" ? "selected dismiss" : "dismiss"} onClick={() => setReview(signal.signal_id, "dismiss")}><X size={15} /> Dismiss</button></div></article>; })}</section>
   </div>;
 }
 
-function Pipeline({ founders, workflow, updateCompany, onOpen, onCompare }: { founders: FounderRecord[]; workflow: WorkspaceState; updateCompany: (id: string, patch: Partial<CompanyWorkflow>) => void; onOpen: (id: string) => void; onCompare: (ids: string[]) => void }) {
+function Pipeline({ founders, workflow, updateCompany, saveView, onOpen, onCompare, notify }: { founders: FounderRecord[]; workflow: WorkspaceState; updateCompany: (id: string, patch: Partial<CompanyWorkflow>) => void; saveView: (view: WorkspaceState["savedViews"][number]) => void; onOpen: (id: string) => void; onCompare: (ids: string[]) => void; notify: (message: string, tone?: Toast["tone"]) => void }) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("all");
   const [sector, setSector] = useState("all");
@@ -273,6 +297,12 @@ function Pipeline({ founders, workflow, updateCompany, onOpen, onCompare }: { fo
   const sectors = [...new Set(founders.map((founder) => String(founder.raw_inputs.sector || "Unclassified")))].sort();
   const rows = founders.filter((founder) => `${founder.name} ${founder.company_name} ${String(founder.raw_inputs.sector || "")}`.toLowerCase().includes(query.toLowerCase())).filter((founder) => stage === "all" || (workflow.companies[founder.founder_id] ?? defaultWorkflow(founder)).stage === stage).filter((founder) => sector === "all" || String(founder.raw_inputs.sector || "Unclassified") === sector).sort((a, b) => sort === "confidence" ? b.founder_score.confidence - a.founder_score.confidence : b.founder_score.value - a.founder_score.value);
   const toggle = (id: string) => setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const allVisibleSelected = rows.length > 0 && rows.every((founder) => selected.has(founder.founder_id));
+  const toggleAllVisible = () => setSelected((current) => {
+    const next = new Set(current);
+    rows.forEach((founder) => allVisibleSelected ? next.delete(founder.founder_id) : next.add(founder.founder_id));
+    return next;
+  });
   const applySavedView = (id: string) => {
     const saved = workflow.savedViews.find((view) => view.id === id);
     if (!saved) return;
@@ -280,13 +310,16 @@ function Pipeline({ founders, workflow, updateCompany, onOpen, onCompare }: { fo
   };
   const saveCurrentView = () => {
     const name = [stage !== "all" ? stage : "", sector !== "all" ? sector : "", query.trim()].filter(Boolean).join(" · ") || `Pipeline view ${workflow.savedViews.length + 1}`;
-    window.dispatchEvent(new CustomEvent("vc-save-pipeline-view", { detail: { id: crypto.randomUUID(), name, stage, sector, sort, query } }));
+    saveView({ id: crypto.randomUUID(), name, stage, sector, sort, query });
+    notify(`Saved “${name}” as a pipeline view.`);
   };
+  const clearFilters = () => { setQuery(""); setStage("all"); setSector("all"); setSort("score"); };
   return <div className="view pipeline-view">
     <section className="workflow-hero"><div><span className="section-kicker"><Columns3 size={14} /> Investment pipeline</span><h1>Move companies through decisions.</h1><p>Filter, assign, compare, and advance opportunities without losing evidence context.</p></div><button className="primary-button" onClick={() => onCompare([...selected])} disabled={selected.size < 2 || selected.size > 4}><BarChart3 size={15} /> Compare {selected.size || ""}</button></section>
-    <article className="panel table-controls"><label className="table-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search company, founder, or sector" /></label><label className="select-control"><select aria-label="Saved pipeline views" defaultValue="" onChange={(event) => { applySavedView(event.target.value); event.currentTarget.value = ""; }}><option value="" disabled>Saved views</option>{workflow.savedViews.map((view) => <option value={view.id} key={view.id}>{view.name}</option>)}</select><ChevronDown size={14} /></label><button className="secondary-button compact" onClick={saveCurrentView}>Save view</button><label className="select-control"><select value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">All stages</option>{PIPELINE_STAGES.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label><label className="select-control"><select value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">All sectors</option>{sectors.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label><label className="select-control"><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">Sort: score</option><option value="confidence">Sort: confidence</option></select><ChevronDown size={14} /></label></article>
-    {selected.size > 0 && <div className="bulk-bar"><strong>{selected.size} selected</strong><button onClick={() => [...selected].forEach((id) => updateCompany(id, { owner: "Arjun Kapoor" }))}>Assign to me</button><button onClick={() => [...selected].forEach((id) => updateCompany(id, { stage: "Diligence" }))}>Move to diligence</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
-    <div className="panel pipeline-table-wrap"><table className="pipeline-table"><thead><tr><th><span className="sr-only">Select</span></th><th>Company</th><th>Stage</th><th>Recommendation</th><th>Evidence</th><th>Owner</th><th>Score</th><th>Updated</th><th /></tr></thead><tbody>{rows.map((founder) => { const company = workflow.companies[founder.founder_id] ?? defaultWorkflow(founder); const decision = getDecision(founder); return <tr key={founder.founder_id}><td><input type="checkbox" aria-label={`Select ${founder.company_name}`} checked={selected.has(founder.founder_id)} onChange={() => toggle(founder.founder_id)} /></td><td><button className="company-cell" onClick={() => onOpen(founder.founder_id)}><Avatar founder={founder} small /><span><strong>{founder.company_name}</strong><small>{founder.name} · {labelize(String(founder.raw_inputs.sector || "Unclassified"))}</small></span></button></td><td><select value={company.stage} onChange={(event) => updateCompany(founder.founder_id, { stage: event.target.value as PipelineStage })}>{PIPELINE_STAGES.map((item) => <option key={item}>{item}</option>)}</select></td><td><span className={`decision-chip ${decision.tone}`}>{decision.label}</span><small>{decision.reason}</small></td><td><strong>{founder.source_evidence.length + founder.trust_claims.length}</strong><small>{founder.source_evidence.length} sources · {founder.trust_claims.length} claims</small></td><td><select value={company.owner} onChange={(event) => updateCompany(founder.founder_id, { owner: event.target.value })}>{OWNERS.map((owner) => <option key={owner}>{owner}</option>)}</select></td><td><strong>{Math.round(founder.founder_score.value)}</strong><small>{Math.round(founder.founder_score.confidence * 100)}% confidence</small></td><td>{formatDate(company.updatedAt)}</td><td><button className="icon-button" aria-label={`Open ${founder.company_name}`} onClick={() => onOpen(founder.founder_id)}><ArrowRight size={15} /></button></td></tr>; })}</tbody></table>{!rows.length && <div className="inline-empty">No companies match the current view.</div>}</div>
+    <article className="panel table-controls"><label className="table-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search company, founder, or sector" /></label><label className="select-control"><select aria-label="Saved pipeline views" defaultValue="" onChange={(event) => { applySavedView(event.target.value); event.currentTarget.value = ""; }}><option value="" disabled>Saved views</option>{workflow.savedViews.map((view) => <option value={view.id} key={view.id}>{view.name}</option>)}</select><ChevronDown size={14} /></label><button className="secondary-button compact" onClick={saveCurrentView}>Save view</button><label className="select-control"><select aria-label="Filter by stage" value={stage} onChange={(event) => setStage(event.target.value)}><option value="all">All stages</option>{PIPELINE_STAGES.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label><label className="select-control"><select aria-label="Filter by sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">All sectors</option>{sectors.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label><label className="select-control"><select aria-label="Sort pipeline" value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">Sort: score</option><option value="confidence">Sort: confidence</option></select><ChevronDown size={14} /></label>{(query || stage !== "all" || sector !== "all" || sort !== "score") && <button className="text-button clear-filters" onClick={clearFilters}><X size={14} /> Reset</button>}</article>
+    <div className="table-result-summary" role="status">{rows.length} of {founders.length} companies</div>
+    {selected.size > 0 && <div className="bulk-bar"><strong>{selected.size} selected</strong><button onClick={() => { [...selected].forEach((id) => updateCompany(id, { owner: "Arjun Kapoor" })); notify(`${selected.size} companies assigned to you.`); }}>Assign to me</button><button onClick={() => { [...selected].forEach((id) => updateCompany(id, { stage: "Diligence" })); notify(`${selected.size} companies moved to diligence.`); }}>Move to diligence</button><button onClick={() => setSelected(new Set())}>Clear</button></div>}
+    <div className="panel pipeline-table-wrap"><table className="pipeline-table"><thead><tr><th><input type="checkbox" aria-label="Select all visible companies" checked={allVisibleSelected} onChange={toggleAllVisible} /></th><th>Company</th><th>Stage</th><th>Recommendation</th><th>Evidence</th><th>Owner</th><th>Score</th><th>Updated</th><th /></tr></thead><tbody>{rows.map((founder) => { const company = workflow.companies[founder.founder_id] ?? defaultWorkflow(founder); const decision = getDecision(founder); return <tr key={founder.founder_id}><td><input type="checkbox" aria-label={`Select ${founder.company_name}`} checked={selected.has(founder.founder_id)} onChange={() => toggle(founder.founder_id)} /></td><td><button className="company-cell" onClick={() => onOpen(founder.founder_id)}><Avatar founder={founder} small /><span><strong>{founder.company_name}</strong><small>{founder.name} · {labelize(String(founder.raw_inputs.sector || "Unclassified"))}</small></span></button></td><td><select aria-label={`Stage for ${founder.company_name}`} value={company.stage} onChange={(event) => updateCompany(founder.founder_id, { stage: event.target.value as PipelineStage })}>{PIPELINE_STAGES.map((item) => <option key={item}>{item}</option>)}</select></td><td><span className={`decision-chip ${decision.tone}`}>{decision.label}</span><small>{decision.reason}</small></td><td><strong>{founder.source_evidence.length + founder.trust_claims.length}</strong><small>{founder.source_evidence.length} sources · {founder.trust_claims.length} claims</small></td><td><select aria-label={`Owner for ${founder.company_name}`} value={company.owner} onChange={(event) => updateCompany(founder.founder_id, { owner: event.target.value })}>{OWNERS.map((owner) => <option key={owner}>{owner}</option>)}</select></td><td><strong>{Math.round(founder.founder_score.value)}</strong><small>{Math.round(founder.founder_score.confidence * 100)}% confidence</small></td><td>{formatDate(company.updatedAt)}</td><td><button className="icon-button" aria-label={`Open ${founder.company_name}`} onClick={() => onOpen(founder.founder_id)}><ArrowRight size={15} /></button></td></tr>; })}</tbody></table>{!rows.length && <div className="inline-empty">No companies match the current view. <button className="text-button" onClick={clearFilters}>Clear filters</button></div>}</div>
   </div>;
 }
 
@@ -383,11 +416,18 @@ function Empty({ title, detail }: { title: string; detail: string }) {
 }
 
 function QuickActions({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (view: View) => void }) {
-  const [query, setQuery] = useState(""); const ref = useRef<HTMLDivElement>(null); const previous = useRef<HTMLElement | null>(null);
+  const [query, setQuery] = useState(""); const [activeIndex, setActiveIndex] = useState(0); const ref = useRef<HTMLDivElement>(null); const actionRefs = useRef<Array<HTMLButtonElement | null>>([]); const previous = useRef<HTMLElement | null>(null);
   useEffect(() => { if (!open) return; previous.current = document.activeElement as HTMLElement; const handler = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); if (event.key === "Tab" && ref.current) { const items = [...ref.current.querySelectorAll<HTMLElement>("button,input")]; if (!items.length) return; if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); } else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); } } }; window.addEventListener("keydown", handler); return () => { window.removeEventListener("keydown", handler); previous.current?.focus(); }; }, [onClose, open]);
   if (!open) return null;
   const actions = [{ title: "Review sourcing signals", detail: "Inbox", view: "inbox" as View }, { title: "Open investment pipeline", detail: "Pipeline", view: "pipeline" as View }, { title: "Prepare investment committee", detail: "IC agenda", view: "ic" as View }, { title: "Upload a pitch deck", detail: "Inbound", view: "intake" as View }, { title: "Search institutional evidence", detail: "Research", view: "research" as View }].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
-  return <div className="dialog-backdrop" onMouseDown={onClose}><div className="search-dialog" ref={ref} role="dialog" aria-modal="true" aria-label="Quick actions" onMouseDown={(event) => event.stopPropagation()}><label><Search size={20} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a workflow" /><kbd>ESC</kbd></label><div className="dialog-content">{actions.map((action) => <button key={action.title} onClick={() => { onSelect(action.view); onClose(); }}><span><Zap size={16} /></span><div><strong>{action.title}</strong><small>{action.detail}</small></div><ArrowRight size={15} /></button>)}</div></div></div>;
+  const choose = (index: number) => { const action = actions[index]; if (action) { onSelect(action.view); onClose(); setQuery(""); setActiveIndex(0); } };
+  const move = (direction: number) => {
+    if (!actions.length) return;
+    const next = (activeIndex + direction + actions.length) % actions.length;
+    setActiveIndex(next);
+    actionRefs.current[next]?.focus();
+  };
+  return <div className="dialog-backdrop" onMouseDown={onClose}><div className="search-dialog" ref={ref} role="dialog" aria-modal="true" aria-label="Quick actions" onMouseDown={(event) => event.stopPropagation()}><label><Search size={20} /><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); move(1); } else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); } else if (event.key === "Enter") { event.preventDefault(); choose(activeIndex); } }} placeholder="Find a workflow" aria-label="Find a workflow" /><kbd>ESC</kbd></label><div className="dialog-content">{actions.map((action, index) => <button ref={(node) => { actionRefs.current[index] = node; }} className={index === activeIndex ? "active" : ""} key={action.title} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}><span><Zap size={16} /></span><div><strong>{action.title}</strong><small>{action.detail}</small></div><ArrowRight size={15} /></button>)}{!actions.length && <div className="dialog-empty"><Search size={18} /><span>No workflow matches “{query}”.</span></div>}</div><p className="dialog-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate <kbd>↵</kbd> Open</p></div></div>;
 }
 
 export default function VCWorkspace() {
@@ -404,38 +444,42 @@ export default function VCWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [online, setOnline] = useState(true);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
+  const notify = (message: string, tone: Toast["tone"] = "success") => {
+    const id = crypto.randomUUID();
+    setToasts((current) => [...current, { id, message, tone }].slice(-3));
+    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 4500);
+  };
   const navigate = (next: View, founderId?: string | null, ids: string[] = compareIds) => {
     const id = founderId === undefined ? selectedFounderId : founderId;
     window.history.pushState({}, "", routeFor(next, id, ids)); setView(next); if (founderId !== undefined) setSelectedFounderId(founderId); if (next === "compare") setCompareIds(ids);
   };
   const addAudit = (founderId: string, action: string) => setWorkspace((current) => ({ ...current, audit: [{ id: crypto.randomUUID(), founderId, actor: "Arjun Kapoor", action, timestamp: new Date().toISOString() }, ...current.audit].slice(0, 100) }));
   const updateCompany = (id: string, patch: Partial<CompanyWorkflow>) => { setWorkspace((current) => ({ ...current, companies: { ...current.companies, [id]: { ...(current.companies[id] ?? defaultWorkflow(founders.find((founder) => founder.founder_id === id)!)), ...patch, updatedAt: new Date().toISOString() } } })); addAudit(id, `updated workflow: ${Object.entries(patch).map(([key, value]) => `${key} → ${value}`).join(", ")}`); };
-  const reviewClaim = (founderId: string, index: number, status: ClaimReviewStatus) => { const key = `${founderId}:${index}`; setWorkspace((current) => ({ ...current, claimReviews: { ...current.claimReviews, [key]: { status, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString(), note: "" } } })); addAudit(founderId, `${labelize(status)} claim ${index + 1}`); };
-  const addTask = (founderId: string) => { const due = new Date(); due.setDate(due.getDate() + 7); setWorkspace((current) => ({ ...current, tasks: [...current.tasks, { id: crypto.randomUUID(), founderId, title: "Verify highest-impact unresolved claim", owner: "Arjun Kapoor", due: due.toISOString(), status: "open" }] })); addAudit(founderId, "created a diligence task"); };
-  const updateTask = (id: string, status: DiligenceTask["status"]) => { const task = workspace.tasks.find((item) => item.id === id); setWorkspace((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === id ? { ...item, status } : item) })); if (task) addAudit(task.founderId, `marked diligence task ${labelize(status)}`); };
-  const updateMemo = (founderId: string, action: "submit" | "approve" | "revise") => { setWorkspace((current) => { const memo = current.memos[founderId] ?? { status: "draft" as const, version: 1, reviewer: "Unassigned", updatedAt: new Date().toISOString(), note: "" }; const next: MemoReview = action === "submit" ? { ...memo, status: "in_review", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : action === "approve" ? { ...memo, status: "approved", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : { ...memo, status: "draft", version: memo.version + 1, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() }; return { ...current, memos: { ...current.memos, [founderId]: next } }; }); addAudit(founderId, action === "submit" ? "submitted memo for review" : action === "approve" ? "approved investment memo" : "requested memo revision"); };
+  const saveView = (savedView: WorkspaceState["savedViews"][number]) => setWorkspace((current) => ({ ...current, savedViews: [...current.savedViews, savedView] }));
+  const reviewClaim = (founderId: string, index: number, status: ClaimReviewStatus) => { const key = `${founderId}:${index}`; setWorkspace((current) => ({ ...current, claimReviews: { ...current.claimReviews, [key]: { status, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString(), note: "" } } })); addAudit(founderId, `${labelize(status)} claim ${index + 1}`); notify(`Claim ${index + 1} marked ${labelize(status).toLowerCase()}.`); };
+  const addTask = (founderId: string) => { const due = new Date(); due.setDate(due.getDate() + 7); setWorkspace((current) => ({ ...current, tasks: [...current.tasks, { id: crypto.randomUUID(), founderId, title: "Verify highest-impact unresolved claim", owner: "Arjun Kapoor", due: due.toISOString(), status: "open" }] })); addAudit(founderId, "created a diligence task"); notify("Diligence task created."); };
+  const updateTask = (id: string, status: DiligenceTask["status"]) => { const task = workspace.tasks.find((item) => item.id === id); setWorkspace((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === id ? { ...item, status } : item) })); if (task) addAudit(task.founderId, `marked diligence task ${labelize(status)}`); notify(`Task marked ${labelize(status).toLowerCase()}.`); };
+  const updateMemo = (founderId: string, action: "submit" | "approve" | "revise") => { setWorkspace((current) => { const memo = current.memos[founderId] ?? { status: "draft" as const, version: 1, reviewer: "Unassigned", updatedAt: new Date().toISOString(), note: "" }; const next: MemoReview = action === "submit" ? { ...memo, status: "in_review", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : action === "approve" ? { ...memo, status: "approved", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : { ...memo, status: "draft", version: memo.version + 1, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() }; return { ...current, memos: { ...current.memos, [founderId]: next } }; }); addAudit(founderId, action === "submit" ? "submitted memo for review" : action === "approve" ? "approved investment memo" : "requested memo revision"); notify(action === "submit" ? "Memo submitted for review." : action === "approve" ? "Memo approved and recorded." : "Revision requested; a new draft version was created."); };
 
   useEffect(() => { const state = routeState(); let savedWorkspace: WorkspaceState | null = null; try { const saved = localStorage.getItem("vc-brain-workspace-v1"); if (saved) savedWorkspace = JSON.parse(saved); } catch { /* keep clean device state */ } queueMicrotask(() => { setView(state.view); setSelectedFounderId(state.founderId); setCompareIds(state.compareIds); if (savedWorkspace) setWorkspace(savedWorkspace); hydrated.current = true; }); const pop = () => { const next = routeState(); setView(next.view); setSelectedFounderId(next.founderId); setCompareIds(next.compareIds); }; window.addEventListener("popstate", pop); return () => window.removeEventListener("popstate", pop); }, []);
   useEffect(() => { if (hydrated.current) localStorage.setItem("vc-brain-workspace-v1", JSON.stringify(workspace)); }, [workspace]);
-  useEffect(() => {
-    const saveView = (event: Event) => {
-      const detail = (event as CustomEvent<WorkspaceState["savedViews"][number]>).detail;
-      setWorkspace((current) => ({ ...current, savedViews: [...current.savedViews, detail] }));
-    };
-    window.addEventListener("vc-save-pipeline-view", saveView);
-    return () => window.removeEventListener("vc-save-pipeline-view", saveView);
-  }, []);
   useEffect(() => { const controller = new AbortController(); Promise.all([fetch(`${API_BASE}/founders`, { signal: controller.signal }), fetch(`${API_BASE}/signals?limit=50`, { signal: controller.signal }), fetch(`${API_BASE}/dashboard/summary`, { signal: controller.signal })]).then(async ([founderResponse, signalResponse, summaryResponse]) => { if (!founderResponse.ok || !signalResponse.ok || !summaryResponse.ok) throw new Error("The VC Brain API returned an error."); const founderData: FounderRecord[] = await founderResponse.json(); const signalData = await signalResponse.json(); setFounders(founderData); setSignals(signalData.signals ?? []); setSummary(await summaryResponse.json()); setWorkspace((current) => ({ ...current, companies: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, defaultWorkflow(founder)])), ...current.companies }, memos: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, { status: "draft", version: 1, reviewer: "Unassigned", updatedAt: founder.timing.memo_ready_at || new Date().toISOString(), note: "" }])), ...current.memos } })); setSelectedFounderId((current) => current || founderData[0]?.founder_id || null); setError(""); }).catch((reason) => { if (reason.name !== "AbortError") setError(`${reason.message} Start FastAPI at ${API_BASE}.`); }).finally(() => setLoading(false)); return () => controller.abort(); }, [refresh]);
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setQuickOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
+  useEffect(() => { const updateOnline = () => setOnline(navigator.onLine); updateOnline(); window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, []);
 
   const selectedFounder = founders.find((founder) => founder.founder_id === selectedFounderId) ?? null;
   const compareFounders = compareIds.map((id) => founders.find((founder) => founder.founder_id === id)).filter((founder): founder is FounderRecord => Boolean(founder));
   const diligenceCount = founders.reduce((total, founder) => total + founder.trust_claims.filter((claim, index) => (workspace.claimReviews[`${founder.founder_id}:${index}`]?.status ?? "unreviewed") === "unreviewed").length, 0);
-  return <><main className="app-shell" aria-hidden={quickOpen || undefined}><Sidebar view={view} onNavigate={(next) => navigate(next)} open={navOpen} onClose={() => setNavOpen(false)} inboxCount={signals.length} diligenceCount={diligenceCount} /><div className="workspace"><Topbar view={view} onMenu={() => setNavOpen(true)} onQuickActions={() => setQuickOpen(true)} />
-    {view === "overview" && <Overview founders={founders} signals={signals} summary={summary} workflow={workspace} onOpen={(id) => navigate("company", id)} onNavigate={(next) => navigate(next)} loading={loading} error={error} />}
-    {view === "inbox" && <SignalInbox persistedSignals={signals} onDataChanged={() => setRefresh((value) => value + 1)} onIntake={() => navigate("intake")} />}
-    {view === "pipeline" && <Pipeline founders={founders} workflow={workspace} updateCompany={updateCompany} onOpen={(id) => navigate("company", id)} onCompare={(ids) => navigate("compare", null, ids)} />}
+  const retry = () => { setLoading(true); setError(""); setRefresh((value) => value + 1); };
+  return <><main className="app-shell" aria-hidden={quickOpen || undefined}><Sidebar view={view} onNavigate={(next) => navigate(next)} open={navOpen} onClose={() => setNavOpen(false)} inboxCount={signals.length} diligenceCount={diligenceCount} /><div className="workspace"><Topbar view={view} onMenu={() => setNavOpen(true)} onQuickActions={() => setQuickOpen(true)} online={online} />
+    {error && <ErrorBanner message={error} onRetry={retry} />}
+    {loading ? <LoadingWorkspace /> : <>
+    {view === "overview" && <Overview founders={founders} signals={signals} summary={summary} workflow={workspace} onOpen={(id) => navigate("company", id)} onNavigate={(next) => navigate(next)} />}
+    {view === "inbox" && <SignalInbox persistedSignals={signals} onDataChanged={() => setRefresh((value) => value + 1)} onIntake={() => navigate("intake")} notify={notify} />}
+    {view === "pipeline" && <Pipeline founders={founders} workflow={workspace} updateCompany={updateCompany} saveView={saveView} onOpen={(id) => navigate("company", id)} onCompare={(ids) => navigate("compare", null, ids)} notify={notify} />}
     {view === "company" && <CompanyWorkspace founder={selectedFounder} workflow={workspace} updateCompany={updateCompany} onDiligence={() => navigate("diligence", selectedFounderId)} onMemo={() => navigate("memo", selectedFounderId)} />}
     {view === "diligence" && <DiligenceWorkspace founder={selectedFounder} workflow={workspace} reviewClaim={reviewClaim} addTask={addTask} updateTask={updateTask} onMemo={() => navigate("memo", selectedFounderId)} />}
     {view === "compare" && <CompareCompanies founders={compareFounders} />}
@@ -443,6 +487,7 @@ export default function VCWorkspace() {
     {view === "ic" && <InvestmentCommittee founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} />}
     {view === "portfolio" && <Portfolio founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} />}
     {view === "research" && <ResearchLibrary founders={founders} signals={signals} />}
-    {view === "intake" && <PitchIntake onCreated={(id) => { setRefresh((value) => value + 1); navigate("company", id); }} />}
-  </div></main><QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} onSelect={(next) => navigate(next)} /></>;
+    {view === "intake" && <PitchIntake onCreated={(id) => { notify("Pitch analyzed and company record created."); setRefresh((value) => value + 1); navigate("company", id); }} />}
+    </>}
+  </div></main><QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} onSelect={(next) => navigate(next)} /><ToastRegion toasts={toasts} dismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} /></>;
 }

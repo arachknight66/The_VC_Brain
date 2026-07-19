@@ -55,3 +55,19 @@ test("gates decision-ready language on evidence completeness", async () => {
   assert.match(page, /AI-generated content remains a working draft/);
   assert.doesNotMatch(page, /Ask anything/);
 });
+
+test("includes priority-two feedback and accessibility states", async () => {
+  const page = await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /function ToastRegion/);
+  assert.match(page, /function LoadingWorkspace/);
+  assert.match(page, /function ErrorBanner/);
+  assert.match(page, /aria-live="polite"/);
+  assert.match(page, /Select all visible companies/);
+  assert.match(page, /ArrowDown/);
+  assert.match(page, /navigator\.onLine/);
+  assert.doesNotMatch(page, /vc-save-pipeline-view/);
+  assert.match(styles, /prefers-reduced-motion/);
+  assert.match(styles, /@media print/);
+  assert.match(styles, /\.toast-region/);
+});
