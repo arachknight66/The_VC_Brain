@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from agents.sourcing_agent import MAX_PITCH_BYTES, create_from_inbound, extract_pitch_text
 from memory.signal_store import SignalStore
+from memory.signals import Signal
 from memory.store import FounderStore
 from run_demo import run_pipeline
 from scanners.orchestrator import SUPPORTED_SOURCES, run_scanners
@@ -36,6 +37,12 @@ class ScannerRunRequest(BaseModel):
     query: str
     sources: list[str] = list(SUPPORTED_SOURCES)
     max_results: int = 10
+    persist: bool = True
+
+
+class SignalReviewRequest(BaseModel):
+    signals: list[dict]
+    accepted_ids: list[str]
 
 
 @router.post("/founders/inbound")
@@ -95,10 +102,30 @@ def execute_scanners(payload: ScannerRunRequest) -> dict:
             payload.sources,
             max_results=payload.max_results,
             store=_signal_store,
+            persist=payload.persist,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return result.to_dict()
+
+
+@router.post("/signals/review")
+def review_scanner_signals(payload: SignalReviewRequest) -> dict:
+    """Persist only signals explicitly accepted during sourcing review."""
+    accepted = []
+    accepted_ids = set(payload.accepted_ids)
+    for raw in payload.signals:
+        signal = Signal.from_dict(raw)
+        if signal.signal_id not in accepted_ids:
+            continue
+        signal.status = "accepted"
+        accepted.append(signal)
+    _signal_store.upsert_many(accepted)
+    return {
+        "accepted": len(accepted),
+        "dismissed": max(0, len(payload.signals) - len(accepted)),
+        "signals": [signal.to_dict() for signal in accepted],
+    }
 
 
 @router.get("/signals")

@@ -78,6 +78,23 @@ def test_orchestrator_persists_and_deduplicates(monkeypatch, tmp_path):
     assert store.list()[0].external_id == "repo-1"
 
 
+def test_orchestrator_preview_does_not_persist(monkeypatch, tmp_path):
+    signal = Signal(
+        source="github",
+        external_id="preview-1",
+        title="Preview Repository",
+        source_url="https://github.com/example/preview",
+        summary="Review before persistence",
+        query="infra",
+        score=72,
+    )
+    monkeypatch.setattr(github, "scan", lambda *args, **kwargs: [signal])
+    store = SignalStore(str(tmp_path / "signals.db"))
+    result = run_scanners("infra", ["github"], store=store, persist=False)
+    assert len(result.signals) == 1
+    assert store.count_by_source() == {}
+
+
 def test_pitch_text_validation():
     from agents.sourcing_agent import extract_pitch_text
 

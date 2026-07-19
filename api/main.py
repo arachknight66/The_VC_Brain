@@ -1,9 +1,12 @@
 """FastAPI app entrypoint (build.md Section 6)."""
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import os
+import secrets
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.routes import router
 
@@ -27,6 +30,24 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_service_token(request: Request, call_next):
+    """Reject direct production API access when a server-to-server token is configured."""
+    expected = os.getenv("VC_BRAIN_SERVICE_TOKEN", "").strip()
+    if (
+        expected
+        and request.url.path != "/health"
+        and not secrets.compare_digest(
+            request.headers.get("x-vc-brain-service-token", ""),
+            expected,
+        )
+    ):
+        return JSONResponse(status_code=401, content={"detail": "Invalid service credentials"})
+    return await call_next(request)
+
+
 app.include_router(router)
 
 
