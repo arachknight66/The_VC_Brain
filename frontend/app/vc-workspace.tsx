@@ -107,6 +107,7 @@ type DashboardSummary = {
 
 type BriefingStep = { label: string; content: string; elapsed: number };
 type ChatMessage = { id: string; role: "assistant" | "user" | "thinking"; label?: string; content: string };
+type IntakeReasoningStep = { label: string; detail: string };
 
 type CompanyWorkflow = { stage: PipelineStage; owner: string; decision: string; updatedAt: string };
 type ClaimReview = { status: ClaimReviewStatus; reviewer: string; updatedAt: string; note: string };
@@ -140,6 +141,14 @@ const DEFAULT_SCENARIO: ScenarioWeights = { founder: 30, market: 25, execution: 
 const EMPTY_WORKSPACE: WorkspaceState = { companies: {}, claimReviews: {}, tasks: [], audit: [], memos: {}, savedViews: [], savedScenarios: [], icDecisions: {}, alertRules: { confidenceFloor: 70, staleEvidenceDays: 90, contradictions: true } };
 const OWNERS = ["Arjun Kapoor", "Maya Chen", "Noah Williams", "Unassigned"];
 const PIPELINE_STAGES: PipelineStage[] = ["New", "Qualified", "Partner review", "Diligence", "IC", "Invest", "Pass"];
+const INTAKE_REASONING_STEPS: IntakeReasoningStep[] = [
+  { label: "Read pitch materials", detail: "Extract deck text and normalize founder, company, market, and product context." },
+  { label: "Map explicit claims", detail: "Identify factual claims that can be checked later against source evidence." },
+  { label: "Check thesis fit", detail: "Compare sector, stage, geography, and pitch context against the investment thesis." },
+  { label: "Search evidence signals", detail: "Look for public build, market, profile, and traction signals tied to the company." },
+  { label: "Score decision axes", detail: "Summarize founder, market, execution, and evidence strength with confidence." },
+  { label: "Create diligence record", detail: "Persist the company, extracted claims, evidence log, timing, and memo context." },
+];
 
 function getInitialTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
@@ -548,9 +557,45 @@ function ResearchLibrary({ founders, signals, workflow }: { founders: FounderRec
 }
 
 function PitchIntake({ onCreated }: { onCreated: (id: string) => void }) {
-  const [file, setFile] = useState<File | null>(null); const [message, setMessage] = useState(""); const [loading, setLoading] = useState(false);
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!file) return setMessage("Choose a pitch file."); const form = new FormData(event.currentTarget); form.set("pitch", file); setLoading(true); try { const response = await fetch(`${API_BASE}/founders/inbound/upload`, { method: "POST", body: form }); const data = await response.json(); if (!response.ok) throw new Error(data.detail || "Pitch processing failed."); onCreated(data.founder_id); } catch (error) { setMessage(error instanceof Error ? error.message : "Pitch intake unavailable."); } finally { setLoading(false); } };
-  return <div className="view workflow-view"><section className="workflow-hero"><div><span className="section-kicker"><Upload size={14} /> Inbound activation</span><h1>Review extraction before diligence.</h1><p>Create the company record, then inspect evidence and claims in the company workspace.</p></div></section><form className="panel intake-form" onSubmit={submit}><div className="form-grid"><label><span>Founder name</span><input name="name" required /></label><label><span>Company name</span><input name="company_name" required /></label><label><span>LinkedIn profile</span><input name="linkedin_url" type="url" /></label><label><span>GitHub handle</span><input name="github_handle" /></label><label><span>Sector</span><input name="sector" /></label><label><span>Stage</span><input name="stage" /></label><label className="full-field"><span>Geography</span><input name="geography" /></label></div><label className={`upload-zone ${file ? "has-file" : ""}`}><Upload size={24} /><strong>{file?.name || "Choose pitch deck"}</strong><span>PDF, TXT, or Markdown · maximum 10 MB</span><input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label><button type="submit" className="primary-button wide intake-submit" disabled={loading}>{loading ? "Analyzing…" : "Upload and analyze"} <ArrowRight size={15} /></button>{message && <p className="workflow-message">{message}</p>}</form></div>;
+  const [file, setFile] = useState<File | null>(null);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const [trailState, setTrailState] = useState<"idle" | "running" | "complete" | "error">("idle");
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setInterval(() => {
+      setActiveStep((current) => Math.min(current + 1, INTAKE_REASONING_STEPS.length - 1));
+    }, 1400);
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!file) return setMessage("Choose a pitch file.");
+    const form = new FormData(event.currentTarget);
+    form.set("pitch", file);
+    setMessage("");
+    setActiveStep(0);
+    setTrailState("running");
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/founders/inbound/upload`, { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Pitch processing failed.");
+      setActiveStep(INTAKE_REASONING_STEPS.length - 1);
+      setTrailState("complete");
+      onCreated(data.founder_id);
+    } catch (error) {
+      setTrailState("error");
+      setMessage(error instanceof Error ? error.message : "Pitch intake unavailable.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <div className="view workflow-view"><section className="workflow-hero"><div><span className="section-kicker"><Upload size={14} /> Inbound activation</span><h1>Review extraction before diligence.</h1><p>Create the company record, then inspect evidence and claims in the company workspace.</p></div></section><div className="intake-layout"><form className="panel intake-form" onSubmit={submit}><div className="form-grid"><label><span>Founder name</span><input name="name" required /></label><label><span>Company name</span><input name="company_name" required /></label><label><span>LinkedIn profile</span><input name="linkedin_url" type="url" /></label><label><span>GitHub handle</span><input name="github_handle" /></label><label><span>Sector</span><input name="sector" /></label><label><span>Stage</span><input name="stage" /></label><label className="full-field"><span>Geography</span><input name="geography" /></label></div><label className={`upload-zone ${file ? "has-file" : ""}`}><Upload size={24} /><strong>{file?.name || "Choose pitch deck"}</strong><span>PDF, TXT, or Markdown · maximum 10 MB</span><input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setTrailState("idle"); setMessage(""); }} /></label><button type="submit" className="primary-button wide intake-submit" disabled={loading}>{loading ? <><RefreshCw className="spin" size={15} /> Analyzing pitch</> : <>Upload and analyze <ArrowRight size={15} /></>}</button>{message && <p className="workflow-message error">{message}</p>}</form><aside className={`panel reasoning-trail ${trailState}`} aria-live="polite"><div className="panel-heading"><div><h2>Analysis reasoning</h2><p>Plain-English rationale shown while the pitch is processed</p></div><Sparkles size={18} /></div><div className="reasoning-steps">{INTAKE_REASONING_STEPS.map((step, index) => { const done = trailState === "complete" || index < activeStep; const current = trailState === "running" && index === activeStep; const blocked = trailState === "error" && index === activeStep; return <div className={`reasoning-step ${done ? "done" : ""} ${current ? "current" : ""} ${blocked ? "blocked" : ""}`} key={step.label}><span>{done ? <Check size={13} /> : current ? <RefreshCw className="spin" size={13} /> : blocked ? <AlertTriangle size={13} /> : index + 1}</span><div><strong>{step.label}</strong><p>{step.detail}</p></div></div>; })}</div><p className="reasoning-note">This trail explains the analysis process and evidence checks without exposing private model chain-of-thought.</p></aside></div></div>;
 }
 
 function Empty({ title, detail }: { title: string; detail: string }) {
