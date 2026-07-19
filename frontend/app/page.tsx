@@ -83,7 +83,7 @@ type FounderRecord = {
     evidence_log: Array<{ signal: string; found: boolean; detail: string; source_url: string | null }>;
   };
   trust_claims: TrustClaim[];
-  source_evidence: Array<{ source: string; title: string; url: string; confidence: number }>;
+  source_evidence: Array<{ source: string; title: string; url: string; content: string; confidence: number }>;
   memo: Record<string, unknown>;
   adversarial_view: Record<string, unknown>;
   timing: { elapsed_seconds: number | null; memo_ready_at: string | null; stage_timings: Record<string, number> };
@@ -104,7 +104,6 @@ type DashboardSummary = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_VC_BRAIN_API_URL ?? "http://localhost:8000";
-const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 const EMPTY_SUMMARY: DashboardSummary = {
   founder_records: 0,
@@ -169,7 +168,7 @@ function createMockFounder({
       { claim_text: "Product usage is growing", confidence: 0.9, evidence_category: "known_verified", source: "Mock product analytics", contradiction_flag: false },
       { claim_text: "Enterprise expansion is repeatable", confidence: 0.62, evidence_category: "statistical_association", source: "Mock customer evidence", contradiction_flag: false },
     ],
-    source_evidence: [{ source: "linkedin", title: `${name} public profile`, url: "https://www.linkedin.com", confidence: 0.9 }],
+    source_evidence: [{ source: "linkedin", title: `${name} public profile`, url: "https://www.linkedin.com", content: `${name} lists ${company} as current role on their public LinkedIn profile.`, confidence: 0.9 }],
     memo: {
       company_snapshot: `${company} is a retained demo company in ${sector}, shown only when the mock-data feature flag is enabled.`,
       investment_hypotheses: ["Founder experience maps to the stated problem.", "Public build evidence supports execution velocity."],
@@ -179,8 +178,8 @@ function createMockFounder({
   };
 }
 
-// Retained demo fixtures. They are intentionally disabled unless
-// NEXT_PUBLIC_USE_MOCK_DATA=true is supplied at build/runtime startup.
+// Retained demo fixtures. Always merged on top of the persisted API
+// founders so the workspace never looks empty before real records exist.
 const MOCK_FOUNDERS: FounderRecord[] = [
   createMockFounder({ id: "mock-priya", name: "Priya Nandakumar", company: "Ridgeline", sector: "Developer tools", stage: "Seed", score: 92, confidence: 0.92, trend: "improving" }),
   createMockFounder({ id: "mock-marcus", name: "Marcus Ihediwa", company: "Ledgerly", sector: "Embedded finance", stage: "Pre-seed", score: 84, confidence: 0.81, trend: "improving" }),
@@ -189,27 +188,6 @@ const MOCK_FOUNDERS: FounderRecord[] = [
   createMockFounder({ id: "mock-sana", name: "Sana Jenkins", company: "Fieldnote", sector: "Vertical SaaS", stage: "Pre-seed", score: 76, confidence: 0.73, trend: "improving" }),
   createMockFounder({ id: "mock-leo", name: "Leo Chen", company: "Onward Robotics", sector: "Robotics", stage: "Seed", score: 81, confidence: 0.79, trend: "stable" }),
 ];
-
-const MOCK_SIGNALS: Signal[] = [
-  { signal_id: "mock-signal-github", source: "github", title: "Ridgeline shipped 3 releases", source_url: "https://github.com", summary: "Repository activity increased in the retained demo fixture.", score: 88, observed_at: "2026-07-14T12:00:00Z" },
-  { signal_id: "mock-signal-linkedin", source: "linkedin", title: "NeuroStream expanded its ML team", source_url: "https://www.linkedin.com", summary: "Public hiring evidence is represented by this disabled demo signal.", score: 82, observed_at: "2026-07-14T11:00:00Z" },
-  { signal_id: "mock-signal-devpost", source: "devpost", title: "Conduit Labs demo submission found", source_url: "https://devpost.com", summary: "A public build submission is represented by this disabled demo signal.", score: 77, observed_at: "2026-07-14T10:00:00Z" },
-  { signal_id: "mock-signal-substack", source: "substack", title: "Fieldnote founder published a market thesis", source_url: "https://substack.com", summary: "A founder-authored public research signal is retained for demos.", score: 71, observed_at: "2026-07-14T09:00:00Z" },
-];
-
-const MOCK_SUMMARY: DashboardSummary = {
-  founder_records: MOCK_FOUNDERS.length,
-  active_opportunities: MOCK_FOUNDERS.length,
-  raw_signals: MOCK_SIGNALS.length,
-  memo_ready: MOCK_FOUNDERS.length,
-  high_confidence_scores: MOCK_FOUNDERS.filter((founder) => founder.founder_score.confidence >= 0.75).length,
-  verified_builds: MOCK_FOUNDERS.filter((founder) => founder.build_evidence.tier === "verified_working").length,
-  verified_claims: MOCK_FOUNDERS.reduce((total, founder) => total + founder.trust_claims.filter((claim) => claim.evidence_category === "known_verified").length, 0),
-  unverified_claims: 0,
-  average_founder_score: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.value, 0) / MOCK_FOUNDERS.length * 10) / 10,
-  average_score_confidence: Math.round(MOCK_FOUNDERS.reduce((total, founder) => total + founder.founder_score.confidence, 0) / MOCK_FOUNDERS.length * 100) / 100,
-  average_signal_to_memo_seconds: 14.2,
-};
 
 const avatarTones = ["indigo", "orange", "cyan", "violet", "green", "blue"];
 
@@ -482,6 +460,213 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   return <div className="score-line"><div><span>{label}</span><strong>{value}</strong></div><div className="progress"><i style={{ width: `${value}%` }} /></div></div>;
 }
 
+type ReasoningStatus = "positive" | "caution" | "critical";
+
+type ReasoningStep = {
+  id: string;
+  title: string;
+  icon: React.ComponentType<{ size?: number }>;
+  status: ReasoningStatus;
+  summary: string;
+  elapsed: string | null;
+  content: React.ReactNode;
+};
+
+function ReasoningTrail({ founder }: { founder: FounderRecord }) {
+  const [openStep, setOpenStep] = useState<string | null>("trust_score");
+  const stageTime = (key: string) => founder.timing.stage_timings[key];
+  const formatSeconds = (seconds: number | undefined): string | null =>
+    typeof seconds === "number" ? `${seconds.toFixed(1)}s` : null;
+
+  const axisMeta: Array<{ id: string; title: string; key: string }> = [
+    { id: "founder_axis_scoring", title: "Founder axis", key: "founder" },
+    { id: "market_axis_scoring", title: "Market axis", key: "market" },
+    { id: "idea_vs_market_scoring", title: "Idea-vs-market axis", key: "idea_vs_market" },
+  ];
+  const axisSteps: ReasoningStep[] = axisMeta.map(({ id, title, key }) => {
+    const score = founder.axis_scores[key];
+    const status: ReasoningStatus = !score ? "caution" : score.score >= 65 ? "positive" : score.score >= 40 ? "caution" : "critical";
+    return {
+      id,
+      title,
+      icon: Sparkles,
+      status,
+      summary: score
+        ? `${labelize(score.rating)} · ${Math.round(score.score)}/100 · ${labelize(score.trend)} trend`
+        : "No independent score was produced for this axis.",
+      elapsed: formatSeconds(stageTime(id)),
+      content: <p className="reasoning-note">{score?.rationale || "No rationale was recorded for this axis."}</p>,
+    };
+  });
+
+  const steps: ReasoningStep[] = [
+    {
+      id: "entity_resolution",
+      title: "Entity resolution",
+      icon: Users,
+      status: (founder.entity_resolution_confidence ?? 0) >= 0.6 ? "positive" : "caution",
+      summary:
+        founder.entity_resolution_confidence === null
+          ? "No external identity match was found before scoring began."
+          : `Matched founder identity at ${Math.round(founder.entity_resolution_confidence * 100)}% confidence from public source evidence.`,
+      elapsed: formatSeconds(stageTime("entity_resolution")),
+      content: (
+        <div className="citation-list">
+          {founder.source_evidence.length ? (
+            founder.source_evidence.map((item, index) => (
+              <a className="citation-card" key={`${item.url}-${index}`} href={item.url} target="_blank" rel="noreferrer">
+                <span className="citation-tag">{labelize(item.source)}</span>
+                <strong>{item.title}</strong>
+                <p>
+                  {(item.content || "No excerpt captured.").slice(0, 170)}
+                  {(item.content || "").length > 170 ? "…" : ""}
+                </p>
+                <span className="citation-meta">{Math.round(item.confidence * 100)}% confidence <ArrowRight size={11} /></span>
+              </a>
+            ))
+          ) : (
+            <div className="inline-empty">No public web signal was collected for this founder.</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "thesis_matching",
+      title: "Thesis screening",
+      icon: Target,
+      status: founder.screened_out ? "critical" : "positive",
+      summary: founder.screened_out
+        ? founder.screened_out_reason || "Screened out of the fund thesis."
+        : "Sector, stage, and geography matched the fund's thesis.",
+      elapsed: formatSeconds(stageTime("thesis_matching")),
+      content: (
+        <p className="reasoning-note">
+          {founder.screened_out_reason || "This record fell inside the configured thesis and proceeded to full scoring."}
+        </p>
+      ),
+    },
+    ...axisSteps,
+    {
+      id: "build_evidence",
+      title: "Build evidence",
+      icon: FileCheck2,
+      status:
+        founder.build_evidence.tier === "verified_working"
+          ? "positive"
+          : founder.build_evidence.tier === "unverifiable"
+          ? "critical"
+          : "caution",
+      summary: `${labelize(founder.build_evidence.tier)} · ${founder.build_evidence.evidence_log.length} signal${founder.build_evidence.evidence_log.length === 1 ? "" : "s"} checked`,
+      elapsed: formatSeconds(stageTime("build_evidence")),
+      content: (
+        <div className="citation-list">
+          {founder.build_evidence.evidence_log.length ? (
+            founder.build_evidence.evidence_log.map((entry, index) => (
+              <div className={`citation-card ${entry.found ? "positive" : "caution"}`} key={`${entry.signal}-${index}`}>
+                <span className={`citation-tag ${entry.found ? "found" : "missing"}`}>
+                  {entry.found ? <Check size={10} /> : <X size={10} />} {labelize(entry.signal)}
+                </span>
+                <p>{entry.detail}</p>
+                {entry.source_url && (
+                  <a href={entry.source_url} target="_blank" rel="noreferrer" className="citation-meta">
+                    View signal <ArrowRight size={11} />
+                  </a>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="inline-empty">No build-verification signals were checked.</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "trust_score",
+      title: "Trust claims",
+      icon: ShieldCheck,
+      status: founder.trust_claims.some((claim) => claim.contradiction_flag)
+        ? "critical"
+        : founder.trust_claims.length && founder.trust_claims.every((claim) => claim.evidence_category === "known_verified")
+        ? "positive"
+        : "caution",
+      summary: `${founder.trust_claims.length} claim${founder.trust_claims.length === 1 ? "" : "s"} extracted from the pitch and checked against public evidence`,
+      elapsed: formatSeconds(stageTime("trust_score")),
+      content: (
+        <div className="citation-list">
+          {founder.trust_claims.length ? (
+            founder.trust_claims.map((claim, index) => (
+              <div
+                className={`citation-card ${claim.contradiction_flag ? "critical" : claim.evidence_category === "known_verified" ? "positive" : "caution"}`}
+                key={`${claim.claim_text}-${index}`}
+              >
+                <span className="citation-tag">
+                  {labelize(claim.evidence_category)}
+                  {claim.contradiction_flag ? " · contradicted" : ""}
+                </span>
+                <p className="citation-quote">&ldquo;{claim.claim_text}&rdquo;</p>
+                <div className="citation-footer">
+                  <span>{Math.round(claim.confidence * 100)}% confidence</span>
+                  {claim.source ? (
+                    <a href={claim.source} target="_blank" rel="noreferrer">Cited source <ArrowRight size={11} /></a>
+                  ) : (
+                    <span className="muted">No source citation</span>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="inline-empty">No claims were extracted from the pitch deck.</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "founder_score",
+      title: "Founder Score",
+      icon: TrendingUp,
+      status: founder.founder_score.confidence >= 0.7 ? "positive" : founder.founder_score.confidence >= 0.4 ? "caution" : "critical",
+      summary: `${Math.round(founder.founder_score.value)}/100 · ${Math.round(founder.founder_score.confidence * 100)}% confidence, weighted from every step above`,
+      elapsed: null,
+      content: (
+        <p className="reasoning-note">
+          {founder.founder_score.confidence_basis ||
+            "Weighted from entity resolution, both independent axis scores, build evidence, and trust claim confidence."}
+        </p>
+      ),
+    },
+  ];
+
+  return (
+    <article className="panel reasoning-trail">
+      <div className="panel-heading">
+        <div>
+          <span className="section-kicker"><Lightbulb size={14} /> Chain of thought</span>
+          <h2>Evidence &amp; reasoning trail</h2>
+          <p>Every step that produced this Trust Score, with the exact citation behind it</p>
+        </div>
+      </div>
+      <div className="trail-list">
+        {steps.map((step) => {
+          const Icon = step.icon;
+          const isOpen = openStep === step.id;
+          return (
+            <div className={`trail-step ${step.status} ${isOpen ? "open" : ""}`} key={step.id}>
+              <button className="trail-step-header" onClick={() => setOpenStep(isOpen ? null : step.id)} aria-expanded={isOpen}>
+                <span className="trail-dot" />
+                <span className="trail-icon"><Icon size={14} /></span>
+                <span className="trail-copy"><strong>{step.title}</strong><small>{step.summary}</small></span>
+                {step.elapsed && <span className="trail-time"><Clock3 size={11} /> {step.elapsed}</span>}
+                <ChevronDown size={14} className="trail-chevron" />
+              </button>
+              {isOpen && <div className="trail-step-body">{step.content}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
 function Company({ founder, onDiligence }: { founder: FounderRecord | null; onDiligence: () => void }) {
   if (!founder) {
     return <div className="view"><div className="empty-state"><BriefcaseBusiness size={24} /><strong>No founder selected</strong><p>Choose a founder record from Ranked Opportunities or Founder Discovery.</p></div></div>;
@@ -518,6 +703,7 @@ function Company({ founder, onDiligence }: { founder: FounderRecord | null; onDi
             <div className="panel-heading"><div><h2>Why this could win</h2><p>Evidence-backed investment hypotheses</p></div><button className="text-button">View sources <ArrowRight size={14} /></button></div>
             <div className="hypothesis-list">{hypotheses.map((hypothesis, index) => <div key={hypothesis}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>Investment hypothesis</strong><p>{hypothesis}</p></div></div>)}{!hypotheses.length && <div className="inline-empty">No investment hypotheses were generated.</div>}</div>
           </article>
+          <ReasoningTrail founder={founder} />
           <article className="panel team-panel">
             <div className="panel-heading"><div><h2>Founder identity</h2><p>Entity resolution and source coverage</p></div></div>
             <div className="team-grid"><div><Avatar founder={founder} /><strong>{founder.name}</strong><small>{founder.entity_resolution_confidence === null ? "No external identity match" : `${Math.round(founder.entity_resolution_confidence * 100)}% entity resolution confidence`}</small></div><div><span className="avatar cyan">{founder.source_evidence.length}</span><strong>Source evidence</strong><small>{founder.source_evidence.map((item) => labelize(item.source)).join(", ") || "None collected"}</small></div></div>
@@ -769,15 +955,6 @@ export default function Home() {
     const controller = new AbortController();
     const loadData = async () => {
       setDataLoading(true);
-      if (USE_MOCK_DATA) {
-        setFounders(MOCK_FOUNDERS);
-        setSignals(MOCK_SIGNALS);
-        setSummary(MOCK_SUMMARY);
-        setSelectedFounderId((current) => current && MOCK_FOUNDERS.some((founder) => founder.founder_id === current) ? current : MOCK_FOUNDERS[0].founder_id);
-        setDataError("");
-        setDataLoading(false);
-        return;
-      }
       try {
         const [foundersResponse, signalsResponse, summaryResponse] = await Promise.all([
           fetch(`${API_BASE}/founders`, { signal: controller.signal }),
@@ -792,10 +969,16 @@ export default function Home() {
           signalsResponse.json(),
           summaryResponse.json(),
         ]);
-        setFounders(founderData);
+        // Always show the retained demo fixtures alongside whatever is
+        // actually persisted (including founders just added via Pitch
+        // Intake), ranked together by Founder Score.
+        const merged = [...MOCK_FOUNDERS, ...founderData].sort(
+          (a: FounderRecord, b: FounderRecord) => b.founder_score.value - a.founder_score.value
+        );
+        setFounders(merged);
         setSignals(signalData.signals ?? []);
         setSummary(summaryData);
-        setSelectedFounderId((current) => current && founderData.some((founder: FounderRecord) => founder.founder_id === current) ? current : founderData[0]?.founder_id ?? null);
+        setSelectedFounderId((current) => current && merged.some((founder) => founder.founder_id === current) ? current : merged[0]?.founder_id ?? null);
         setDataError("");
       } catch (reason) {
         if (reason instanceof DOMException && reason.name === "AbortError") return;

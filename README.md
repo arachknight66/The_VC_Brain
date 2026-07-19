@@ -114,19 +114,12 @@ The Next.js dashboard reads persisted data from `GET /founders`, `GET /signals`,
 - **Raw Signals** are unconfirmed Stage 0 scanner results.
 - **Signal → Memo** is the measured pipeline elapsed time.
 
-Dashboard, Founder Discovery, Company Analysis, and Trust Claim Verification use API records by
-default. The original demo founders and signals are retained as a disabled fixture. To enable them
-temporarily for a frontend-only demo:
-
-```powershell
-cd frontend
-$env:NEXT_PUBLIC_USE_MOCK_DATA="true"
-npm run dev
-```
-
-Leave the variable unset, or set it to `false`, to use the integrated FastAPI data path. The mock
-fixture is never used as an automatic fallback for API failures, so backend integration problems
-remain visible.
+Dashboard, Founder Discovery, Company Analysis, and Trust Claim Verification always merge the
+persisted API founders (including anything just added via Pitch Intake) with a small set of
+retained demo founders, so the workspace never looks empty before real records exist. The demo
+founders are frontend-only fixtures — they are not written to the database. If the API request
+itself fails (backend not running), the error banner is shown as-is rather than silently
+substituting fixture data, so backend integration problems remain visible.
 
 ## Pitch upload
 
