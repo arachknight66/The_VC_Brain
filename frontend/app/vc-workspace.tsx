@@ -140,6 +140,13 @@ const EMPTY_WORKSPACE: WorkspaceState = { companies: {}, claimReviews: {}, tasks
 const OWNERS = ["Arjun Kapoor", "Maya Chen", "Noah Williams", "Unassigned"];
 const PIPELINE_STAGES: PipelineStage[] = ["New", "Qualified", "Partner review", "Diligence", "IC", "Invest", "Pass"];
 
+function getInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  const saved = localStorage.getItem("vc-brain-theme");
+  if (saved === "dark" || saved === "light") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 const navItems = [
   { id: "overview" as View, label: "Overview", icon: LayoutDashboard },
   { id: "inbox" as View, label: "Inbox", icon: Inbox },
@@ -660,8 +667,7 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   const [online, setOnline] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>("light");
-  const [themeReady, setThemeReady] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
 
   const notify = (message: string, tone: Toast["tone"] = "success") => {
     const id = crypto.randomUUID();
@@ -746,17 +752,9 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setQuickOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
   useEffect(() => { const updateOnline = () => setOnline(navigator.onLine); updateOnline(); window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, []);
   useEffect(() => {
-    const saved = localStorage.getItem("vc-brain-theme");
-    const initial = saved === "dark" || saved === "light" ? saved : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    setTheme(initial);
-    document.documentElement.dataset.theme = initial;
-    setThemeReady(true);
-  }, []);
-  useEffect(() => {
-    if (!themeReady) return;
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("vc-brain-theme", theme);
-  }, [theme, themeReady]);
+  }, [theme]);
 
   const selectedFounder = founders.find((founder) => founder.founder_id === selectedFounderId) ?? null;
   const compareFounders = compareIds.map((id) => founders.find((founder) => founder.founder_id === id)).filter((founder): founder is FounderRecord => Boolean(founder));
