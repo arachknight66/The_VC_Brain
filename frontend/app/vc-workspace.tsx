@@ -23,11 +23,15 @@ import {
   Lightbulb,
   ListChecks,
   Menu,
+  MessageSquare,
   Plus,
+  Radar,
   RefreshCw,
+  Scale,
   Search,
   ShieldCheck,
   Sparkles,
+  Target,
   TrendingUp,
   Upload,
   Wifi,
@@ -37,7 +41,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-type View = "overview" | "inbox" | "pipeline" | "company" | "diligence" | "compare" | "memo" | "ic" | "portfolio" | "research" | "intake";
+type View = "overview" | "inbox" | "pipeline" | "company" | "diligence" | "compare" | "memo" | "ic" | "portfolio" | "research" | "lab" | "intake";
 type PipelineStage = "New" | "Qualified" | "Partner review" | "Diligence" | "IC" | "Invest" | "Pass";
 type ClaimReviewStatus = "unreviewed" | "approved" | "disputed" | "evidence_requested";
 
@@ -102,6 +106,11 @@ type DiligenceTask = { id: string; founderId: string; title: string; owner: stri
 type AuditEvent = { id: string; founderId: string; actor: string; action: string; timestamp: string };
 type MemoReview = { status: "draft" | "in_review" | "approved"; version: number; reviewer: string; updatedAt: string; note: string };
 type Toast = { id: string; message: string; tone: "success" | "info" | "warning" };
+type ScenarioWeights = { founder: number; market: number; execution: number; evidence: number };
+type SavedScenario = { id: string; name: string; weights: ScenarioWeights; createdAt: string };
+type ICDecision = { outcome: "invest" | "hold" | "pass"; rationale: string; dissent: string; decidedBy: string; decidedAt: string };
+type AlertRules = { confidenceFloor: number; staleEvidenceDays: number; contradictions: boolean };
+type PortfolioAlert = { id: string; founderId: string; company: string; severity: "critical" | "warning" | "info"; title: string; detail: string };
 type WorkspaceState = {
   companies: Record<string, CompanyWorkflow>;
   claimReviews: Record<string, ClaimReview>;
@@ -109,11 +118,15 @@ type WorkspaceState = {
   audit: AuditEvent[];
   memos: Record<string, MemoReview>;
   savedViews: Array<{ id: string; name: string; stage: string; sector: string; sort: string; query?: string }>;
+  savedScenarios: SavedScenario[];
+  icDecisions: Record<string, ICDecision>;
+  alertRules: AlertRules;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_VC_BRAIN_API_URL ?? "http://localhost:8000";
 const EMPTY_SUMMARY: DashboardSummary = { founder_records: 0, active_opportunities: 0, raw_signals: 0, memo_ready: 0, high_confidence_scores: 0, verified_builds: 0, verified_claims: 0, unverified_claims: 0, average_founder_score: 0, average_score_confidence: 0, average_signal_to_memo_seconds: null };
-const EMPTY_WORKSPACE: WorkspaceState = { companies: {}, claimReviews: {}, tasks: [], audit: [], memos: {}, savedViews: [] };
+const DEFAULT_SCENARIO: ScenarioWeights = { founder: 30, market: 25, execution: 20, evidence: 25 };
+const EMPTY_WORKSPACE: WorkspaceState = { companies: {}, claimReviews: {}, tasks: [], audit: [], memos: {}, savedViews: [], savedScenarios: [], icDecisions: {}, alertRules: { confidenceFloor: 70, staleEvidenceDays: 90, contradictions: true } };
 const OWNERS = ["Arjun Kapoor", "Maya Chen", "Noah Williams", "Unassigned"];
 const PIPELINE_STAGES: PipelineStage[] = ["New", "Qualified", "Partner review", "Diligence", "IC", "Invest", "Pass"];
 
@@ -125,12 +138,13 @@ const navItems = [
   { id: "ic" as View, label: "IC", icon: ClipboardCheck },
   { id: "portfolio" as View, label: "Portfolio", icon: BriefcaseBusiness },
   { id: "research" as View, label: "Research", icon: BookOpen },
+  { id: "lab" as View, label: "Decision Lab", icon: Scale },
 ];
 
 const viewTitles: Record<View, string> = {
   overview: "Investment Overview", inbox: "Research Inbox", pipeline: "Investment Pipeline", company: "Company Workspace",
   diligence: "Diligence", compare: "Company Comparison", memo: "Investment Memo", ic: "Investment Committee",
-  portfolio: "Portfolio", research: "Research Library", intake: "Pitch Intake",
+  portfolio: "Portfolio", research: "Research Library", lab: "Decision Lab", intake: "Pitch Intake",
 };
 
 function labelize(value: string | null | undefined) {
@@ -168,10 +182,64 @@ function defaultWorkflow(founder: FounderRecord): CompanyWorkflow {
   return { stage, owner: "Unassigned", decision: getDecision(founder).label, updatedAt: new Date().toISOString() };
 }
 
+function normalizeWorkspace(value: Partial<WorkspaceState> | null): WorkspaceState {
+  return {
+    ...EMPTY_WORKSPACE,
+    ...(value ?? {}),
+    companies: value?.companies ?? {},
+    claimReviews: value?.claimReviews ?? {},
+    tasks: value?.tasks ?? [],
+    audit: value?.audit ?? [],
+    memos: value?.memos ?? {},
+    savedViews: value?.savedViews ?? [],
+    savedScenarios: value?.savedScenarios ?? [],
+    icDecisions: value?.icDecisions ?? {},
+    alertRules: { ...EMPTY_WORKSPACE.alertRules, ...(value?.alertRules ?? {}) },
+  };
+}
+
+function getScenarioDimensions(founder: FounderRecord) {
+  const verifiedClaims = founder.trust_claims.filter((claim) => claim.evidence_category === "known_verified" && !claim.contradiction_flag).length;
+  const contradictions = founder.trust_claims.filter((claim) => claim.contradiction_flag).length;
+  const buildChecks = founder.build_evidence.evidence_log;
+  const buildRatio = buildChecks.length ? buildChecks.filter((item) => item.found).length / buildChecks.length : 0;
+  return {
+    founder: Math.round(founder.axis_scores.founder?.score || founder.founder_score.value),
+    market: Math.round(founder.axis_scores.market?.score || 0),
+    execution: Math.round(buildRatio * 100),
+    evidence: Math.max(0, Math.min(100, founder.source_evidence.length * 12 + verifiedClaims * 10 - contradictions * 15)),
+  };
+}
+
+function getScenarioScore(founder: FounderRecord, weights: ScenarioWeights) {
+  const dimensions = getScenarioDimensions(founder);
+  const total = Object.values(weights).reduce((sum, value) => sum + value, 0) || 1;
+  const score = Object.entries(weights).reduce((sum, [key, weight]) => sum + dimensions[key as keyof ScenarioWeights] * weight, 0) / total;
+  return { score: Math.round(score), dimensions };
+}
+
+function getPortfolioAlerts(founders: FounderRecord[], workflow: WorkspaceState): PortfolioAlert[] {
+  const now = Date.now();
+  return founders.flatMap((founder) => {
+    const company = workflow.companies[founder.founder_id] ?? defaultWorkflow(founder);
+    if (company.stage !== "Invest") return [];
+    const alerts: PortfolioAlert[] = [];
+    const contradictions = founder.trust_claims.filter((claim) => claim.contradiction_flag).length;
+    if (workflow.alertRules.contradictions && contradictions) alerts.push({ id: `${founder.founder_id}-contradictions`, founderId: founder.founder_id, company: founder.company_name, severity: "critical", title: `${contradictions} contradiction ${contradictions === 1 ? "flag" : "flags"}`, detail: "A material claim now conflicts with the evidence record." });
+    const confidence = Math.round(founder.founder_score.confidence * 100);
+    if (confidence < workflow.alertRules.confidenceFloor) alerts.push({ id: `${founder.founder_id}-confidence`, founderId: founder.founder_id, company: founder.company_name, severity: "warning", title: `Confidence fell below ${workflow.alertRules.confidenceFloor}%`, detail: `Current model confidence is ${confidence}%; refresh primary evidence before the next board cycle.` });
+    const newestEvidence = founder.source_evidence.map((source) => new Date(source.collected_at || 0).getTime()).filter(Number.isFinite).sort((a, b) => b - a)[0] || 0;
+    const ageDays = newestEvidence ? Math.floor((now - newestEvidence) / 86400000) : Number.POSITIVE_INFINITY;
+    if (ageDays > workflow.alertRules.staleEvidenceDays) alerts.push({ id: `${founder.founder_id}-stale`, founderId: founder.founder_id, company: founder.company_name, severity: "info", title: "Evidence refresh is overdue", detail: newestEvidence ? `Newest source is ${ageDays} days old.` : "No dated portfolio evidence is attached." });
+    if (founder.founder_score.trend === "declining") alerts.push({ id: `${founder.founder_id}-trend`, founderId: founder.founder_id, company: founder.company_name, severity: "warning", title: "Founder signal is declining", detail: "The latest score trend moved down; inspect the underlying evidence before reacting." });
+    return alerts;
+  });
+}
+
 function routeState(): { view: View; founderId: string | null; compareIds: string[] } {
   if (typeof window === "undefined") return { view: "overview", founderId: null, compareIds: [] };
   const parts = window.location.pathname.split("/").filter(Boolean);
-  const map: Record<string, View> = { inbox: "inbox", pipeline: "pipeline", diligence: "diligence", compare: "compare", memos: "memo", ic: "ic", portfolio: "portfolio", research: "research", intake: "intake", companies: "company" };
+  const map: Record<string, View> = { inbox: "inbox", pipeline: "pipeline", diligence: "diligence", compare: "compare", memos: "memo", ic: "ic", portfolio: "portfolio", research: "research", lab: "lab", intake: "intake", companies: "company" };
   return { view: parts.length ? map[parts[0]] ?? "overview" : "overview", founderId: ["companies", "diligence", "memos"].includes(parts[0]) ? decodeURIComponent(parts[1] || "") || null : null, compareIds: new URLSearchParams(window.location.search).get("ids")?.split(",").filter(Boolean) ?? [] };
 }
 
@@ -390,19 +458,48 @@ function MemoWorkspace({ founder, workflow, updateMemo }: { founder: FounderReco
   </div>;
 }
 
-function InvestmentCommittee({ founders, workflow, onOpen }: { founders: FounderRecord[]; workflow: WorkspaceState; onOpen: (id: string) => void }) {
+function DecisionLab({ founders, workflow, saveScenario, onOpen, notify }: { founders: FounderRecord[]; workflow: WorkspaceState; saveScenario: (scenario: SavedScenario) => void; onOpen: (id: string) => void; notify: (message: string, tone?: Toast["tone"]) => void }) {
+  const [weights, setWeights] = useState<ScenarioWeights>(DEFAULT_SCENARIO);
+  const presets: Array<{ name: string; weights: ScenarioWeights }> = [
+    { name: "Balanced", weights: DEFAULT_SCENARIO },
+    { name: "Founder-first", weights: { founder: 50, market: 20, execution: 15, evidence: 15 } },
+    { name: "Evidence-heavy", weights: { founder: 20, market: 20, execution: 20, evidence: 40 } },
+    { name: "Market-first", weights: { founder: 20, market: 50, execution: 15, evidence: 15 } },
+  ];
+  const ranking = founders.map((founder) => ({ founder, ...getScenarioScore(founder, weights) })).sort((a, b) => b.score - a.score);
+  const save = () => {
+    const preset = presets.find((item) => JSON.stringify(item.weights) === JSON.stringify(weights));
+    const scenario = { id: crypto.randomUUID(), name: preset?.name || `Custom scenario ${workflow.savedScenarios.length + 1}`, weights, createdAt: new Date().toISOString() };
+    saveScenario(scenario); notify(`Saved ${scenario.name} to decision memory.`);
+  };
+  return <div className="view decision-lab"><section className="workflow-hero"><div><span className="section-kicker"><Scale size={14} /> Decision lab</span><h1>Stress-test conviction before it becomes consensus.</h1><p>Change the investment model, inspect rank sensitivity, and save the scenario with its assumptions.</p></div><button className="primary-button" onClick={save}><FileCheck2 size={15} /> Save scenario</button></section>
+    <div className="lab-layout"><aside className="panel scenario-controls"><div className="panel-heading"><div><h2>Scenario assumptions</h2><p>Weights normalize automatically</p></div><span className="status-pill">{Object.values(weights).reduce((sum, value) => sum + value, 0)} total</span></div><div className="preset-row">{presets.map((preset) => <button key={preset.name} className={JSON.stringify(preset.weights) === JSON.stringify(weights) ? "active" : ""} onClick={() => setWeights(preset.weights)}>{preset.name}</button>)}</div><div className="weight-controls">{(Object.keys(weights) as Array<keyof ScenarioWeights>).map((key) => <label key={key}><span><strong>{labelize(key)}</strong><output>{weights[key]}%</output></span><input type="range" min="0" max="60" step="5" value={weights[key]} onChange={(event) => setWeights((current) => ({ ...current, [key]: Number(event.target.value) }))} /></label>)}</div>{workflow.savedScenarios.length > 0 && <div className="saved-scenarios"><strong>Saved scenarios</strong>{workflow.savedScenarios.slice(-4).reverse().map((scenario) => <button key={scenario.id} onClick={() => setWeights(scenario.weights)}><span>{scenario.name}</span><small>{formatDate(scenario.createdAt)}</small></button>)}</div>}</aside>
+      <section className="panel scenario-results"><div className="panel-heading"><div><h2>Scenario ranking</h2><p>Transparent weighted score—not an investment recommendation</p></div><Radar size={19} /></div><div className="scenario-table" role="table" aria-label="Scenario ranking"><div className="scenario-row scenario-head" role="row"><span>Rank</span><span>Company</span><span>Founder</span><span>Market</span><span>Execution</span><span>Evidence</span><span>Scenario</span><span /></div>{ranking.map(({ founder, score, dimensions }, index) => { const delta = score - Math.round(founder.founder_score.value); const spread = Math.max(...Object.values(dimensions)) - Math.min(...Object.values(dimensions)); return <button className="scenario-row" role="row" key={founder.founder_id} onClick={() => onOpen(founder.founder_id)}><span className="scenario-rank">{index + 1}</span><span className="scenario-company"><Avatar founder={founder} small /><span><strong>{founder.company_name}</strong><small>{spread > 45 ? "Fragile across assumptions" : "Relatively balanced"}</small></span></span><span>{dimensions.founder}</span><span>{dimensions.market}</span><span>{dimensions.execution}</span><span>{dimensions.evidence}</span><span><strong>{score}</strong><small className={delta >= 0 ? "positive-delta" : "negative-delta"}>{delta >= 0 ? "+" : ""}{delta} vs base</small></span><ArrowRight size={14} /></button>; })}</div>{!ranking.length && <Empty title="No companies to model" detail="Add companies through Pitch Intake before running a decision scenario." />}</section></div>
+    <article className="scenario-disclosure"><Target size={16} /><p><strong>Model boundary:</strong> this lab exposes sensitivity to explicit assumptions. It does not estimate investment returns or replace partner judgment.</p></article>
+  </div>;
+}
+
+function InvestmentCommittee({ founders, workflow, onOpen, recordDecision }: { founders: FounderRecord[]; workflow: WorkspaceState; onOpen: (id: string) => void; recordDecision: (founder: FounderRecord, decision: ICDecision) => void }) {
   const agenda = founders.filter((founder) => (workflow.companies[founder.founder_id] ?? defaultWorkflow(founder)).stage === "IC");
-  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><ClipboardCheck size={14} /> Investment committee</span><h1>Prepare decisions, not presentations.</h1><p>Every agenda item exposes the recommendation, dissent, evidence gates, and memo approval state.</p></div><span className="status-pill">{agenda.length} agenda items</span></section><section className="ic-list">{agenda.map((founder, index) => { const decision = getDecision(founder); const memo = workflow.memos[founder.founder_id]; return <article className="panel ic-item" key={founder.founder_id}><span className="ic-order">{String(index + 1).padStart(2, "0")}</span><div><h2>{founder.company_name}</h2><p>{founder.name} · {labelize(String(founder.raw_inputs.sector || "Unclassified"))}</p></div><div><span>Recommendation</span><strong>{decision.label}</strong><small>{decision.reason}</small></div><div><span>Memo</span><strong>{memo ? labelize(memo.status) : "Draft"}</strong><small>{memo?.reviewer || "No reviewer"}</small></div><div><span>Dissent</span><strong>{founder.trust_claims.some((claim) => claim.contradiction_flag) ? "Recorded" : "None recorded"}</strong><small>{founder.trust_claims.filter((claim) => claim.contradiction_flag).length} contradiction flags</small></div><button className="primary-button" onClick={() => onOpen(founder.founder_id)}>Open decision <ArrowRight size={14} /></button></article>; })}{!agenda.length && <Empty title="No companies are ready for IC" detail="Advance qualified companies from Pipeline after their evidence and memo gates are complete." />}</section></div>;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { outcome: ICDecision["outcome"]; rationale: string; dissent: string }>>({});
+  const updateDraft = (id: string, patch: Partial<{ outcome: ICDecision["outcome"]; rationale: string; dissent: string }>) => setDrafts((current) => ({ ...current, [id]: { outcome: "hold", rationale: "", dissent: "", ...current[id], ...patch } }));
+  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><ClipboardCheck size={14} /> Investment committee</span><h1>Prepare decisions, not presentations.</h1><p>Every agenda item exposes recommendation, dissent, evidence gates, and an accountable final decision.</p></div><span className="status-pill">{agenda.length} agenda items</span></section><section className="ic-list">{agenda.map((founder, index) => { const recommendation = getDecision(founder); const memo = workflow.memos[founder.founder_id]; const existing = workflow.icDecisions[founder.founder_id]; const draft = drafts[founder.founder_id] ?? { outcome: "hold" as const, rationale: "", dissent: "" }; return <article className="panel ic-item" key={founder.founder_id}><span className="ic-order">{String(index + 1).padStart(2, "0")}</span><div><h2>{founder.company_name}</h2><p>{founder.name} · {labelize(String(founder.raw_inputs.sector || "Unclassified"))}</p></div><div><span>Recommendation</span><strong>{recommendation.label}</strong><small>{recommendation.reason}</small></div><div><span>Memo</span><strong>{memo ? labelize(memo.status) : "Draft"}</strong><small>{memo?.reviewer || "No reviewer"}</small></div><div><span>Dissent</span><strong>{founder.trust_claims.some((claim) => claim.contradiction_flag) ? "Recorded" : "None recorded"}</strong><small>{founder.trust_claims.filter((claim) => claim.contradiction_flag).length} contradiction flags</small></div><div className="ic-actions"><button className="secondary-button" onClick={() => onOpen(founder.founder_id)}>Evidence</button><button className="primary-button" onClick={() => setOpenId((current) => current === founder.founder_id ? null : founder.founder_id)}>{existing ? "View decision" : "Record decision"} <ArrowRight size={14} /></button></div>{openId === founder.founder_id && <div className="ic-decision-editor">{existing ? <div className="recorded-decision"><CheckCircle2 size={20} /><div><span>Final decision · {formatDate(existing.decidedAt)}</span><h3>{labelize(existing.outcome)}</h3><p>{existing.rationale}</p>{existing.dissent && <blockquote><MessageSquare size={15} />Dissent: {existing.dissent}</blockquote>}<small>{existing.decidedBy} · immutable decision record</small></div></div> : <><label><span>Final outcome</span><select value={draft.outcome} onChange={(event) => updateDraft(founder.founder_id, { outcome: event.target.value as ICDecision["outcome"] })}><option value="invest">Invest</option><option value="hold">Hold</option><option value="pass">Pass</option></select></label><label className="ic-rationale"><span>Decision rationale</span><textarea rows={3} value={draft.rationale} onChange={(event) => updateDraft(founder.founder_id, { rationale: event.target.value })} placeholder="State the decisive evidence and tradeoff…" /></label><label className="ic-rationale"><span>Dissent or minority view</span><textarea rows={3} value={draft.dissent} onChange={(event) => updateDraft(founder.founder_id, { dissent: event.target.value })} placeholder="Optional, but preserved with the decision" /></label><button className="primary-button" disabled={!draft.rationale.trim()} onClick={() => recordDecision(founder, { ...draft, decidedBy: "Arjun Kapoor", decidedAt: new Date().toISOString() })}><FileCheck2 size={15} /> Commit decision</button></>}</div>}</article>; })}{!agenda.length && <Empty title="No companies are ready for IC" detail="Advance qualified companies from Pipeline after their evidence and memo gates are complete." />}</section></div>;
 }
 
-function Portfolio({ founders, workflow, onOpen }: { founders: FounderRecord[]; workflow: WorkspaceState; onOpen: (id: string) => void }) {
+function Portfolio({ founders, workflow, onOpen, updateRules }: { founders: FounderRecord[]; workflow: WorkspaceState; onOpen: (id: string) => void; updateRules: (rules: Partial<AlertRules>) => void }) {
   const portfolio = founders.filter((founder) => (workflow.companies[founder.founder_id] ?? defaultWorkflow(founder)).stage === "Invest");
-  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><BriefcaseBusiness size={14} /> Portfolio monitoring</span><h1>Track material changes after investment.</h1><p>Portfolio records surface stale evidence, score movement, and founder signals that warrant board attention.</p></div></section><section className="portfolio-grid">{portfolio.map((founder) => <button className="panel portfolio-card" key={founder.founder_id} onClick={() => onOpen(founder.founder_id)}><div><Avatar founder={founder} /><span><strong>{founder.company_name}</strong><small>{labelize(String(founder.raw_inputs.sector || "Unclassified"))}</small></span></div><div className="portfolio-metric"><span>Founder signal</span><strong>{Math.round(founder.founder_score.value)}</strong><small>{labelize(founder.founder_score.trend)}</small></div><div className="portfolio-alert"><BellRing size={15} /><span>{founder.trust_claims.filter((claim) => claim.contradiction_flag).length ? "Contradiction requires review" : "No material alert"}</span></div></button>)}{!portfolio.length && <Empty title="No active investments in this workspace" detail="Companies moved to Invest will appear here with monitoring signals." />}</section></div>;
+  const alerts = getPortfolioAlerts(founders, workflow);
+  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><BriefcaseBusiness size={14} /> Portfolio monitoring</span><h1>Track material changes after investment.</h1><p>Rules watch confidence, evidence freshness, contradictions, and founder-signal movement.</p></div><span className={`status-pill ${alerts.some((alert) => alert.severity === "critical") ? "attention" : ""}`}>{alerts.length} active alerts</span></section>
+    <div className="portfolio-monitor-layout"><section className="panel alert-center"><div className="panel-heading"><div><h2>Material change queue</h2><p>Ordered by severity and decision impact</p></div><BellRing size={18} /></div>{alerts.map((alert) => <button className={`monitor-alert ${alert.severity}`} key={alert.id} onClick={() => onOpen(alert.founderId)}><span className="alert-severity">{alert.severity}</span><span><strong>{alert.company} · {alert.title}</strong><small>{alert.detail}</small></span><ArrowRight size={14} /></button>)}{!alerts.length && <div className="inline-empty">No portfolio rule is currently triggered.</div>}</section>
+      <aside className="panel alert-rules"><div className="panel-heading"><div><h2>Monitoring rules</h2><p>Device-local alert preferences</p></div></div><label><span><strong>Confidence floor</strong><output>{workflow.alertRules.confidenceFloor}%</output></span><input type="range" min="50" max="90" step="5" value={workflow.alertRules.confidenceFloor} onChange={(event) => updateRules({ confidenceFloor: Number(event.target.value) })} /></label><label><span><strong>Evidence freshness</strong></span><select value={workflow.alertRules.staleEvidenceDays} onChange={(event) => updateRules({ staleEvidenceDays: Number(event.target.value) })}><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option><option value="180">180 days</option></select></label><label className="rule-toggle"><input type="checkbox" checked={workflow.alertRules.contradictions} onChange={(event) => updateRules({ contradictions: event.target.checked })} /><span><strong>Contradiction alerts</strong><small>Flag conflicts in material claims</small></span></label></aside></div>
+    <div className="section-heading portfolio-heading"><div><h2>Active investments</h2><p>Monitoring context by company</p></div></div><section className="portfolio-grid">{portfolio.map((founder) => { const companyAlerts = alerts.filter((alert) => alert.founderId === founder.founder_id); return <button className="panel portfolio-card" key={founder.founder_id} onClick={() => onOpen(founder.founder_id)}><div><Avatar founder={founder} /><span><strong>{founder.company_name}</strong><small>{labelize(String(founder.raw_inputs.sector || "Unclassified"))}</small></span></div><div className="portfolio-metric"><span>Founder signal</span><strong>{Math.round(founder.founder_score.value)}</strong><small>{labelize(founder.founder_score.trend)}</small></div><div className={`portfolio-alert ${companyAlerts.length ? "attention" : ""}`}><BellRing size={15} /><span>{companyAlerts.length ? `${companyAlerts.length} monitoring ${companyAlerts.length === 1 ? "alert" : "alerts"}` : "No material alert"}</span></div></button>; })}{!portfolio.length && <Empty title="No active investments in this workspace" detail="Companies moved to Invest will appear here with monitoring signals." />}</section></div>;
 }
 
-function ResearchLibrary({ founders, signals }: { founders: FounderRecord[]; signals: Signal[] }) {
+function ResearchLibrary({ founders, signals, workflow }: { founders: FounderRecord[]; signals: Signal[]; workflow: WorkspaceState }) {
   const sources = founders.flatMap((founder) => founder.source_evidence.map((source) => ({ ...source, company: founder.company_name })));
-  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><BookOpen size={14} /> Research library</span><h1>Institutional evidence, with provenance.</h1><p>Search accepted signals and company sources without mixing them with unreviewed scanner results.</p></div></section><section className="research-grid"><article className="panel"><div className="panel-heading"><div><h2>Accepted source evidence</h2><p>Attached to company decision records</p></div><span className="status-pill">{sources.length}</span></div>{sources.slice(0, 12).map((source, index) => <a className="research-row" href={source.url} target="_blank" rel="noreferrer" key={`${source.url}-${index}`}><Globe2 size={15} /><span><strong>{source.title}</strong><small>{source.company} · {labelize(source.source)} · {Math.round(source.confidence * 100)}% confidence</small></span><ArrowRight size={14} /></a>)}{!sources.length && <div className="inline-empty">No source evidence has been accepted.</div>}</article><article className="panel"><div className="panel-heading"><div><h2>Reviewed sourcing signals</h2><p>Persisted after inbox review</p></div><span className="status-pill">{signals.length}</span></div>{signals.slice(0, 12).map((signal) => <a className="research-row" href={signal.source_url} target="_blank" rel="noreferrer" key={signal.signal_id}><Zap size={15} /><span><strong>{signal.title}</strong><small>{labelize(signal.source)} · observed {formatDate(signal.observed_at)}</small></span><ArrowRight size={14} /></a>)}</article></section></div>;
+  const decisions = Object.entries(workflow.icDecisions).map(([founderId, decision]) => ({ decision, founder: founders.find((founder) => founder.founder_id === founderId) })).filter((item): item is { decision: ICDecision; founder: FounderRecord } => Boolean(item.founder)).sort((a, b) => new Date(b.decision.decidedAt).getTime() - new Date(a.decision.decidedAt).getTime());
+  return <div className="view"><section className="workflow-hero"><div><span className="section-kicker"><BookOpen size={14} /> Research library</span><h1>Institutional evidence, with provenance.</h1><p>Accepted evidence, reviewed signals, and prior decisions remain connected.</p></div></section><section className="research-grid"><article className="panel"><div className="panel-heading"><div><h2>Accepted source evidence</h2><p>Attached to company decision records</p></div><span className="status-pill">{sources.length}</span></div>{sources.slice(0, 12).map((source, index) => <a className="research-row" href={source.url} target="_blank" rel="noreferrer" key={`${source.url}-${index}`}><Globe2 size={15} /><span><strong>{source.title}</strong><small>{source.company} · {labelize(source.source)} · {Math.round(source.confidence * 100)}% confidence</small></span><ArrowRight size={14} /></a>)}{!sources.length && <div className="inline-empty">No source evidence has been accepted.</div>}</article><article className="panel"><div className="panel-heading"><div><h2>Reviewed sourcing signals</h2><p>Persisted after inbox review</p></div><span className="status-pill">{signals.length}</span></div>{signals.slice(0, 12).map((signal) => <a className="research-row" href={signal.source_url} target="_blank" rel="noreferrer" key={signal.signal_id}><Zap size={15} /><span><strong>{signal.title}</strong><small>{labelize(signal.source)} · observed {formatDate(signal.observed_at)}</small></span><ArrowRight size={14} /></a>)}</article><article className="panel decision-memory"><div className="panel-heading"><div><h2>Decision memory</h2><p>Final IC rationale and preserved dissent</p></div><span className="status-pill">{decisions.length}</span></div>{decisions.map(({ founder, decision }) => <div className="memory-row" key={founder.founder_id}><span className={`memory-outcome ${decision.outcome}`}>{labelize(decision.outcome)}</span><div><strong>{founder.company_name}</strong><p>{decision.rationale}</p>{decision.dissent && <small>Dissent: {decision.dissent}</small>}<small>{decision.decidedBy} · {formatDate(decision.decidedAt)}</small></div></div>)}{!decisions.length && <div className="inline-empty">Committed IC decisions will become searchable institutional memory.</div>}</article></section></div>;
 }
 
 function PitchIntake({ onCreated }: { onCreated: (id: string) => void }) {
@@ -419,7 +516,7 @@ function QuickActions({ open, onClose, onSelect }: { open: boolean; onClose: () 
   const [query, setQuery] = useState(""); const [activeIndex, setActiveIndex] = useState(0); const ref = useRef<HTMLDivElement>(null); const actionRefs = useRef<Array<HTMLButtonElement | null>>([]); const previous = useRef<HTMLElement | null>(null);
   useEffect(() => { if (!open) return; previous.current = document.activeElement as HTMLElement; const handler = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); if (event.key === "Tab" && ref.current) { const items = [...ref.current.querySelectorAll<HTMLElement>("button,input")]; if (!items.length) return; if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); } else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); } } }; window.addEventListener("keydown", handler); return () => { window.removeEventListener("keydown", handler); previous.current?.focus(); }; }, [onClose, open]);
   if (!open) return null;
-  const actions = [{ title: "Review sourcing signals", detail: "Inbox", view: "inbox" as View }, { title: "Open investment pipeline", detail: "Pipeline", view: "pipeline" as View }, { title: "Prepare investment committee", detail: "IC agenda", view: "ic" as View }, { title: "Upload a pitch deck", detail: "Inbound", view: "intake" as View }, { title: "Search institutional evidence", detail: "Research", view: "research" as View }].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
+  const actions = [{ title: "Review sourcing signals", detail: "Inbox", view: "inbox" as View }, { title: "Open investment pipeline", detail: "Pipeline", view: "pipeline" as View }, { title: "Stress-test a decision", detail: "Decision Lab", view: "lab" as View }, { title: "Prepare investment committee", detail: "IC agenda", view: "ic" as View }, { title: "Upload a pitch deck", detail: "Inbound", view: "intake" as View }, { title: "Search institutional evidence", detail: "Research", view: "research" as View }].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
   const choose = (index: number) => { const action = actions[index]; if (action) { onSelect(action.view); onClose(); setQuery(""); setActiveIndex(0); } };
   const move = (direction: number) => {
     if (!actions.length) return;
@@ -459,12 +556,20 @@ export default function VCWorkspace() {
   const addAudit = (founderId: string, action: string) => setWorkspace((current) => ({ ...current, audit: [{ id: crypto.randomUUID(), founderId, actor: "Arjun Kapoor", action, timestamp: new Date().toISOString() }, ...current.audit].slice(0, 100) }));
   const updateCompany = (id: string, patch: Partial<CompanyWorkflow>) => { setWorkspace((current) => ({ ...current, companies: { ...current.companies, [id]: { ...(current.companies[id] ?? defaultWorkflow(founders.find((founder) => founder.founder_id === id)!)), ...patch, updatedAt: new Date().toISOString() } } })); addAudit(id, `updated workflow: ${Object.entries(patch).map(([key, value]) => `${key} → ${value}`).join(", ")}`); };
   const saveView = (savedView: WorkspaceState["savedViews"][number]) => setWorkspace((current) => ({ ...current, savedViews: [...current.savedViews, savedView] }));
+  const saveScenario = (scenario: SavedScenario) => setWorkspace((current) => ({ ...current, savedScenarios: [...current.savedScenarios, scenario].slice(-12) }));
+  const updateAlertRules = (rules: Partial<AlertRules>) => setWorkspace((current) => ({ ...current, alertRules: { ...current.alertRules, ...rules } }));
+  const recordICDecision = (founder: FounderRecord, decision: ICDecision) => {
+    const stage: PipelineStage = decision.outcome === "invest" ? "Invest" : decision.outcome === "pass" ? "Pass" : "Partner review";
+    setWorkspace((current) => ({ ...current, icDecisions: { ...current.icDecisions, [founder.founder_id]: decision }, companies: { ...current.companies, [founder.founder_id]: { ...(current.companies[founder.founder_id] ?? defaultWorkflow(founder)), stage, decision: labelize(decision.outcome), updatedAt: decision.decidedAt } } }));
+    addAudit(founder.founder_id, `committed IC decision: ${decision.outcome}`);
+    notify(`${founder.company_name}: ${labelize(decision.outcome)} decision committed.`);
+  };
   const reviewClaim = (founderId: string, index: number, status: ClaimReviewStatus) => { const key = `${founderId}:${index}`; setWorkspace((current) => ({ ...current, claimReviews: { ...current.claimReviews, [key]: { status, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString(), note: "" } } })); addAudit(founderId, `${labelize(status)} claim ${index + 1}`); notify(`Claim ${index + 1} marked ${labelize(status).toLowerCase()}.`); };
   const addTask = (founderId: string) => { const due = new Date(); due.setDate(due.getDate() + 7); setWorkspace((current) => ({ ...current, tasks: [...current.tasks, { id: crypto.randomUUID(), founderId, title: "Verify highest-impact unresolved claim", owner: "Arjun Kapoor", due: due.toISOString(), status: "open" }] })); addAudit(founderId, "created a diligence task"); notify("Diligence task created."); };
   const updateTask = (id: string, status: DiligenceTask["status"]) => { const task = workspace.tasks.find((item) => item.id === id); setWorkspace((current) => ({ ...current, tasks: current.tasks.map((item) => item.id === id ? { ...item, status } : item) })); if (task) addAudit(task.founderId, `marked diligence task ${labelize(status)}`); notify(`Task marked ${labelize(status).toLowerCase()}.`); };
   const updateMemo = (founderId: string, action: "submit" | "approve" | "revise") => { setWorkspace((current) => { const memo = current.memos[founderId] ?? { status: "draft" as const, version: 1, reviewer: "Unassigned", updatedAt: new Date().toISOString(), note: "" }; const next: MemoReview = action === "submit" ? { ...memo, status: "in_review", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : action === "approve" ? { ...memo, status: "approved", reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() } : { ...memo, status: "draft", version: memo.version + 1, reviewer: "Arjun Kapoor", updatedAt: new Date().toISOString() }; return { ...current, memos: { ...current.memos, [founderId]: next } }; }); addAudit(founderId, action === "submit" ? "submitted memo for review" : action === "approve" ? "approved investment memo" : "requested memo revision"); notify(action === "submit" ? "Memo submitted for review." : action === "approve" ? "Memo approved and recorded." : "Revision requested; a new draft version was created."); };
 
-  useEffect(() => { const state = routeState(); let savedWorkspace: WorkspaceState | null = null; try { const saved = localStorage.getItem("vc-brain-workspace-v1"); if (saved) savedWorkspace = JSON.parse(saved); } catch { /* keep clean device state */ } queueMicrotask(() => { setView(state.view); setSelectedFounderId(state.founderId); setCompareIds(state.compareIds); if (savedWorkspace) setWorkspace(savedWorkspace); hydrated.current = true; }); const pop = () => { const next = routeState(); setView(next.view); setSelectedFounderId(next.founderId); setCompareIds(next.compareIds); }; window.addEventListener("popstate", pop); return () => window.removeEventListener("popstate", pop); }, []);
+  useEffect(() => { const state = routeState(); let savedWorkspace: Partial<WorkspaceState> | null = null; try { const saved = localStorage.getItem("vc-brain-workspace-v1"); if (saved) savedWorkspace = JSON.parse(saved); } catch { /* keep clean device state */ } queueMicrotask(() => { setView(state.view); setSelectedFounderId(state.founderId); setCompareIds(state.compareIds); setWorkspace(normalizeWorkspace(savedWorkspace)); hydrated.current = true; }); const pop = () => { const next = routeState(); setView(next.view); setSelectedFounderId(next.founderId); setCompareIds(next.compareIds); }; window.addEventListener("popstate", pop); return () => window.removeEventListener("popstate", pop); }, []);
   useEffect(() => { if (hydrated.current) localStorage.setItem("vc-brain-workspace-v1", JSON.stringify(workspace)); }, [workspace]);
   useEffect(() => { const controller = new AbortController(); Promise.all([fetch(`${API_BASE}/founders`, { signal: controller.signal }), fetch(`${API_BASE}/signals?limit=50`, { signal: controller.signal }), fetch(`${API_BASE}/dashboard/summary`, { signal: controller.signal })]).then(async ([founderResponse, signalResponse, summaryResponse]) => { if (!founderResponse.ok || !signalResponse.ok || !summaryResponse.ok) throw new Error("The VC Brain API returned an error."); const founderData: FounderRecord[] = await founderResponse.json(); const signalData = await signalResponse.json(); setFounders(founderData); setSignals(signalData.signals ?? []); setSummary(await summaryResponse.json()); setWorkspace((current) => ({ ...current, companies: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, defaultWorkflow(founder)])), ...current.companies }, memos: { ...Object.fromEntries(founderData.map((founder) => [founder.founder_id, { status: "draft", version: 1, reviewer: "Unassigned", updatedAt: founder.timing.memo_ready_at || new Date().toISOString(), note: "" }])), ...current.memos } })); setSelectedFounderId((current) => current || founderData[0]?.founder_id || null); setError(""); }).catch((reason) => { if (reason.name !== "AbortError") setError(`${reason.message} Start FastAPI at ${API_BASE}.`); }).finally(() => setLoading(false)); return () => controller.abort(); }, [refresh]);
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setQuickOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
@@ -484,9 +589,10 @@ export default function VCWorkspace() {
     {view === "diligence" && <DiligenceWorkspace founder={selectedFounder} workflow={workspace} reviewClaim={reviewClaim} addTask={addTask} updateTask={updateTask} onMemo={() => navigate("memo", selectedFounderId)} />}
     {view === "compare" && <CompareCompanies founders={compareFounders} />}
     {view === "memo" && <MemoWorkspace founder={selectedFounder} workflow={workspace} updateMemo={updateMemo} />}
-    {view === "ic" && <InvestmentCommittee founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} />}
-    {view === "portfolio" && <Portfolio founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} />}
-    {view === "research" && <ResearchLibrary founders={founders} signals={signals} />}
+    {view === "ic" && <InvestmentCommittee founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} recordDecision={recordICDecision} />}
+    {view === "portfolio" && <Portfolio founders={founders} workflow={workspace} onOpen={(id) => navigate("company", id)} updateRules={updateAlertRules} />}
+    {view === "research" && <ResearchLibrary founders={founders} signals={signals} workflow={workspace} />}
+    {view === "lab" && <DecisionLab founders={founders} workflow={workspace} saveScenario={saveScenario} onOpen={(id) => navigate("company", id)} notify={notify} />}
     {view === "intake" && <PitchIntake onCreated={(id) => { notify("Pitch analyzed and company record created."); setRefresh((value) => value + 1); navigate("company", id); }} />}
     </>}
   </div></main><QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} onSelect={(next) => navigate(next)} /><ToastRegion toasts={toasts} dismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} /></>;

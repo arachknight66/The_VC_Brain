@@ -39,7 +39,7 @@ test("ships reviewed signal and pitch-upload API integrations", async () => {
 });
 
 test("serves deep-linkable workflow routes", async () => {
-  for (const path of ["/inbox", "/pipeline", "/companies/example", "/diligence/example", "/compare?ids=a,b", "/memos/example", "/ic", "/portfolio", "/research", "/intake"]) {
+  for (const path of ["/inbox", "/pipeline", "/companies/example", "/diligence/example", "/compare?ids=a,b", "/memos/example", "/ic", "/portfolio", "/research", "/lab", "/intake"]) {
     const response = await render(path);
     assert.equal(response.status, 200, `${path} should resolve`);
   }
@@ -70,4 +70,18 @@ test("includes priority-two feedback and accessibility states", async () => {
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /@media print/);
   assert.match(styles, /\.toast-region/);
+});
+
+test("includes priority-three decision intelligence", async () => {
+  const page = await readFile(new URL("../app/vc-workspace.tsx", import.meta.url), "utf8");
+  assert.match(page, /function DecisionLab/);
+  assert.match(page, /getScenarioScore/);
+  assert.match(page, /Stress-test conviction/);
+  assert.match(page, /recordICDecision/);
+  assert.match(page, /immutable decision record/);
+  assert.match(page, /getPortfolioAlerts/);
+  assert.match(page, /Material change queue/);
+  assert.match(page, /Decision memory/);
+  assert.match(page, /normalizeWorkspace/);
+  assert.doesNotMatch(page, /chatbot/i);
 });
