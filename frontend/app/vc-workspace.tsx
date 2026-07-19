@@ -36,6 +36,7 @@ import {
   Target,
   TrendingUp,
   Upload,
+  UserRound,
   Wifi,
   WifiOff,
   X,
@@ -139,6 +140,13 @@ const DEFAULT_SCENARIO: ScenarioWeights = { founder: 30, market: 25, execution: 
 const EMPTY_WORKSPACE: WorkspaceState = { companies: {}, claimReviews: {}, tasks: [], audit: [], memos: {}, savedViews: [], savedScenarios: [], icDecisions: {}, alertRules: { confidenceFloor: 70, staleEvidenceDays: 90, contradictions: true } };
 const OWNERS = ["Arjun Kapoor", "Maya Chen", "Noah Williams", "Unassigned"];
 const PIPELINE_STAGES: PipelineStage[] = ["New", "Qualified", "Partner review", "Diligence", "IC", "Invest", "Pass"];
+
+function getInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  const saved = localStorage.getItem("vc-brain-theme");
+  if (saved === "dark" || saved === "light") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 const navItems = [
   { id: "overview" as View, label: "Overview", icon: LayoutDashboard },
@@ -276,10 +284,27 @@ function Avatar({ founder, small = false }: { founder: FounderRecord; small?: bo
 }
 
 function Sidebar({ view, onNavigate, open, onClose, inboxCount, diligenceCount, user }: { view: View; onNavigate: (view: View) => void; open: boolean; onClose: () => void; inboxCount: number; diligenceCount: number; user: SessionUser }) {
+  const role = labelize(user.role ?? "member");
+  const organization = user.organizationName || "Personal workspace";
   return <>{open && <button className="scrim" aria-label="Close navigation" onClick={onClose} />}<aside className={`sidebar ${open ? "open" : ""}`}>
     <div className="sidebar-top"><Logo /><button className="icon-button sidebar-close" onClick={onClose} aria-label="Close navigation"><X size={18} /></button></div>
     <nav aria-label="Primary navigation"><p className="eyebrow">Investment workflow</p>{navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => { onNavigate(id); onClose(); }}><Icon size={17} /><span>{label}</span>{id === "inbox" && inboxCount > 0 && <span className="nav-count neutral">{inboxCount}</span>}{id === "diligence" && diligenceCount > 0 && <span className="nav-count">{diligenceCount}</span>}</button>)}</nav>
-    <div className="sidebar-bottom"><div className="user"><span className="avatar blue small">{initials(user.displayName)}</span><span><strong>{user.displayName}</strong><small>{user.email}</small></span></div><div className="account-actions"><Link prefetch={false} className="account-link" href="/api/auth/google/logout">Switch account or sign out</Link></div></div>
+    <div className="sidebar-bottom">
+      <section className="profile-card" aria-label="Profile">
+        <div className="profile-card-head">
+          <span className="avatar blue">{initials(user.displayName)}</span>
+          <span>
+            <strong>{user.displayName}</strong>
+            <small>{user.email}</small>
+          </span>
+        </div>
+        <div className="profile-meta">
+          <span><BriefcaseBusiness size={13} />{organization}</span>
+          <span><UserRound size={13} />{role}</span>
+        </div>
+        <Link prefetch={false} className="account-link" href="/api/auth/google/logout">Switch account or sign out</Link>
+      </section>
+    </div>
   </aside></>;
 }
 
@@ -290,7 +315,7 @@ function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => vo
 
 function Topbar({ view, onMenu, onQuickActions, online, syncStatus, user, theme, onToggleTheme }: { view: View; onMenu: () => void; onQuickActions: () => void; online: boolean; syncStatus: SyncStatus; user: SessionUser; theme: ThemeMode; onToggleTheme: () => void }) {
   const syncLabel = !online ? "Offline" : syncStatus === "saving" ? "Saving…" : syncStatus === "conflict" ? "Updated in another tab" : syncStatus === "error" ? "Sync failed" : syncStatus === "loading" ? "Connecting…" : "Account saved";
-  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="avatar blue small" title={user.email}>{initials(user.displayName)}</span></div></header>;
+  return <header className="topbar"><div className="topbar-title"><button className="icon-button menu-button" onClick={onMenu} aria-label="Open navigation"><Menu size={20} /></button><span>{viewTitles[view]}</span></div><button className="command-search" onClick={onQuickActions} aria-keyshortcuts="Control+K Meta+K"><Search size={15} /><span>Search or jump to...</span><kbd>⌘ K</kbd></button><div className="top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /><span className={`connection-state ${online && !["error", "conflict"].includes(syncStatus) ? "online" : "offline"}`} title={syncLabel}>{syncStatus === "saving" || syncStatus === "loading" ? <RefreshCw className="spin" size={14} /> : online ? <Wifi size={14} /> : <WifiOff size={14} />}<span>{syncLabel}</span></span><span className="top-profile" title={user.email}><span className="avatar blue small">{initials(user.displayName)}</span><span>{user.displayName}</span></span></div></header>;
 }
 
 function LoadingWorkspace() {
@@ -660,8 +685,7 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   const [online, setOnline] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>("light");
-  const [themeReady, setThemeReady] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
 
   const notify = (message: string, tone: Toast["tone"] = "success") => {
     const id = crypto.randomUUID();
@@ -746,17 +770,9 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   useEffect(() => { const handler = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setQuickOpen(true); } }; window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler); }, []);
   useEffect(() => { const updateOnline = () => setOnline(navigator.onLine); updateOnline(); window.addEventListener("online", updateOnline); window.addEventListener("offline", updateOnline); return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); }; }, []);
   useEffect(() => {
-    const saved = localStorage.getItem("vc-brain-theme");
-    const initial = saved === "dark" || saved === "light" ? saved : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    setTheme(initial);
-    document.documentElement.dataset.theme = initial;
-    setThemeReady(true);
-  }, []);
-  useEffect(() => {
-    if (!themeReady) return;
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("vc-brain-theme", theme);
-  }, [theme, themeReady]);
+  }, [theme]);
 
   const selectedFounder = founders.find((founder) => founder.founder_id === selectedFounderId) ?? null;
   const compareFounders = compareIds.map((id) => founders.find((founder) => founder.founder_id === id)).filter((founder): founder is FounderRecord => Boolean(founder));
