@@ -1,0 +1,20 @@
+{
+  "name": "Jordan Castellane",
+  "company_name": "Nimbus Health AI",
+  "source_channel": "launch_scan",
+  "raw_inputs": {
+    "deck_text": "Nimbus Health AI is the world's leading AI diagnostic copilot for primary care physicians. We are backed by Sequoia Capital's scout program and have quietly onboarded 2 million active users across 40 countries. We have been featured in TechCrunch, Forbes, and Wired as 'the ChatGPT of healthcare.' Our proprietary model outperforms board-certified physicians on diagnostic accuracy benchmarks. We are pre-revenue but expect to close a $15M Series A within the next quarter led by a top-tier fund.",
+    "deck_images": [],
+    "github_handle": "nimbus-health-ai",
+    "linkedin_url": "https://www.linkedin.com/in/jordan-castellane",
+    "claimed_hackathon": null,
+    "claimed_demo_url": null,
+    "twitter_handle": "@nimbushealthai",
+    "blog_url": null,
+    "has_funding_history": false,
+    "has_accelerator_history": false,
+    "sector": "healthtech",
+    "stage": "seed",
+    "geography": "US"
+  }
+}

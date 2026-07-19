@@ -1,0 +1,20 @@
+{
+  "name": "Riley Vantongeren",
+  "company_name": "Loopstack",
+  "source_channel": "hackathon_scan",
+  "raw_inputs": {
+    "deck_text": "Loopstack is a workflow automation builder for ops teams that we built during a hackathon called 'Circuit Break 2025.' We built a full working prototype with a drag-and-drop workflow canvas and a live demo we showed to judges. We didn't end up submitting to Devpost or any hackathon platform because we ran out of time before the submission deadline, so there's no public writeup. We also took our demo offline right after the event and haven't redeployed it yet.",
+    "deck_images": [],
+    "github_handle": null,
+    "linkedin_url": "https://www.linkedin.com/in/riley-vantongeren",
+    "claimed_hackathon": "Circuit Break 2025",
+    "claimed_demo_url": "https://loopstack-demo-9482-nonexistent.io",
+    "twitter_handle": null,
+    "blog_url": null,
+    "has_funding_history": false,
+    "has_accelerator_history": false,
+    "sector": "developer tools",
+    "stage": "pre-seed",
+    "geography": "US"
+  }
+}

@@ -1,2 +1,0 @@
-"""Tavily-specific exceptions."""
-

@@ -1,0 +1,20 @@
+{
+  "name": "Aster Lindqvist",
+  "company_name": "Petra Carbon",
+  "source_channel": "launch_scan",
+  "raw_inputs": {
+    "deck_text": "Petra Carbon is building low-cost enhanced-weathering hardware for smallholder farms to sequester carbon while improving soil yield. I've spent the last two years writing publicly about carbon removal MRV standards and building a community following around the technical challenges of distributed sequestration. This is my first company. I have not raised outside funding, have no GitHub-visible codebase (our early prototypes are hardware, not software), and have not been through an accelerator program. We have a working bench prototype and letters of interest from two agricultural cooperatives.",
+    "deck_images": [],
+    "github_handle": null,
+    "linkedin_url": "https://www.linkedin.com/in/aster-lindqvist",
+    "claimed_hackathon": null,
+    "claimed_demo_url": null,
+    "twitter_handle": "@asterbuilds",
+    "blog_url": "https://asterlindqvist.substack.com",
+    "has_funding_history": false,
+    "has_accelerator_history": false,
+    "sector": "climate tech",
+    "stage": "pre-seed",
+    "geography": "EU"
+  }
+}

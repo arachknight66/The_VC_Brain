@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FounderRecord",
+  "type": "object",
+  "required": ["founder_id", "name", "company_name", "source_channel", "first_seen_at", "last_updated_at", "raw_inputs"],
+  "properties": {
+    "founder_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string" },
+    "company_name": { "type": "string" },
+    "source_channel": {
+      "type": "string",
+      "enum": ["inbound", "github_scan", "hackathon_scan", "launch_scan", "accelerator_scan"]
+    },
+    "first_seen_at": { "type": "string", "format": "date-time" },
+    "last_updated_at": { "type": "string", "format": "date-time" },
+    "screened_out": { "type": "boolean" },
+    "screened_out_reason": { "type": ["string", "null"] },
+    "entity_resolution_confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "raw_inputs": {
+      "type": "object",
+      "properties": {
+        "deck_text": { "type": ["string", "null"] },
+        "deck_images": { "type": "array", "items": { "type": "string" } },
+        "github_handle": { "type": ["string", "null"] },
+        "linkedin_url": { "type": ["string", "null"] },
+        "claimed_hackathon": { "type": ["string", "null"] },
+        "claimed_demo_url": { "type": ["string", "null"] },
+        "twitter_handle": { "type": ["string", "null"] },
+        "blog_url": { "type": ["string", "null"] },
+        "has_funding_history": { "type": ["boolean", "null"] },
+        "has_accelerator_history": { "type": ["boolean", "null"] },
+        "sector": { "type": ["string", "null"] },
+        "stage": { "type": ["string", "null"] },
+        "geography": { "type": ["string", "null"] }
+      }
+    },
+    "founder_score": {
+      "type": "object",
+      "properties": {
+        "value": { "type": "number", "minimum": 0, "maximum": 100 },
+        "trend": { "type": "string", "enum": ["improving", "stable", "declining"] },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": { "type": "string", "format": "date-time" },
+              "value": { "type": "number" },
+              "context": { "type": "string" }
+            }
+          }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence_basis": { "type": ["string", "null"] }
+      }
+    },
+    "axis_scores": {
+      "type": "object",
+      "properties": {
+        "founder": {
+          "type": "object",
+          "properties": {
+            "rating": { "type": "string" },
+            "score": { "type": "number" },
+            "trend": { "type": "string" },
+            "rationale": { "type": "string" }
+          }
+        },
+        "market": {
+          "type": "object",
+          "properties": {
+            "rating": { "type": "string", "enum": ["bullish", "neutral", "bear"] },
+            "score": { "type": "number" },
+            "trend": { "type": "string" },
+            "rationale": { "type": "string" }
+          }
+        },
+        "idea_vs_market": {
+          "type": "object",
+          "properties": {
+            "rating": { "type": "string" },
+            "score": { "type": "number" },
+            "trend": { "type": "string" },
+            "rationale": { "type": "string" }
+          }
+        }
+      }
+    },
+    "build_evidence": {
+      "type": "object",
+      "properties": {
+        "tier": { "type": "string", "enum": ["verified_working", "verified_submitted", "unverifiable", "not_applicable"] },
+        "signals_checked": { "type": "array", "items": { "type": "string" } },
+        "evidence_log": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "signal": { "type": "string" },
+              "found": { "type": "boolean" },
+              "detail": { "type": "string" },
+              "source_url": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "trust_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim_text": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence_category": { "type": "string", "enum": ["known_verified", "statistical_association", "unverifiable"] },
+          "source": { "type": ["string", "null"] },
+          "contradiction_flag": { "type": "boolean" }
+        }
+      }
+    },
+    "memo": { "type": "object" },
+    "adversarial_view": { "type": "object" },
+    "timing": {
+      "type": "object",
+      "properties": {
+        "signal_detected_at": { "type": ["string", "null"], "format": "date-time" },
+        "application_triggered_at": { "type": ["string", "null"], "format": "date-time" },
+        "memo_ready_at": { "type": ["string", "null"], "format": "date-time" },
+        "elapsed_seconds": { "type": ["number", "null"] },
+        "stage_timings": { "type": "object" }
+      }
+    }
+  }
+}

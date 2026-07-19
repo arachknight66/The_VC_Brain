@@ -1,2 +1,0 @@
-"""Search pipeline orchestration."""
-

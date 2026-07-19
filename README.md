@@ -1,202 +1,155 @@
-# The VC Brain
+# VC Brain
 
-The VC Brain is an AI-powered venture intelligence platform that helps investors discover founders before fundraising, collect evidence-backed diligence, generate explainable recommendations, and produce professional investment memos.
+An AI-first system that sources, scores, and produces evidence-backed investment memos for startup
+founders — compressing Sourcing → Screening → Diligence → Decision into a fast, auditable pipeline.
+Built for Hack-Nation's 6th Global AI Hackathon, Track 02 (Maschmeyer Group), per the spec in
+[`build.md`](./build.md).
 
-The project is optimized for a hackathon MVP: one developer or small team should be able to build a polished end-to-end demo without introducing enterprise complexity.
+**Design principle enforced throughout:** the system never outputs a single collapsed "yes/no"
+investment decision. It outputs scores, evidence, and confidence — a human makes the call.
 
-## Problem Statement
+## Differentiators built
 
-Early-stage venture discovery is noisy, biased, and slow. Strong technical founders often appear first in public signals such as GitHub repositories, Hacker News launches, research papers, accelerator cohorts, patents, and hackathons, not in warm investor networks.
+1. **Independent, non-averaged 3-axis scoring** — Founder / Market / Idea-vs-Market are three separate
+   OpenAI calls with separate prompts, never combined into one number in `axis_scores`.
+2. **Per-claim Trust Score** with evidence citations — not a single company-level trust score.
+3. **A genuinely independent Adversarial Agent** — structurally isolated from the memo agent: it only
+   ever receives a redacted evidence bundle that excludes `record.memo` (see
+   `agents/adversarial_agent.py::_evidence_bundle`), enforced at the API boundary, not by convention.
+4. **A dedicated Build Evidence Agent** — verifies whether a founder actually built something even
+   without a public GitHub repo, via hackathon-platform search, a live HTTP check, demo-video search,
+   and Product Hunt search, all logged (including negatives) for full transparency.
+5. **Cold-start handling** via a public-footprint fallback signal, explicitly tagged
+   `confidence_basis: "public_footprint_fallback"` wherever it's used.
+6. **Live speed instrumentation** — every pipeline stage is timed into `timing.stage_timings`, and the
+   dashboard shows signal → memo-ready elapsed time per founder, computed live.
+7. **Persistent Founder Score** across sessions — SQLite carries forward `founder_score.history` and
+   computes a trend arrow on each rerun rather than starting fresh every time.
 
-The VC Brain turns those fragmented public signals into an evidence-backed investor workspace. It keeps every claim traceable, every score explainable, and every recommendation grounded in cited evidence.
+## Architecture
 
-## Why This Exists
-
-The system is designed around one principle:
-
-> AI assists reasoning, but deterministic backend logic owns business decisions.
-
-AI agents extract, classify, summarize, verify, and draft. The backend owns scoring formulas, confidence rules, recommendation thresholds, traceability, and persistence.
-
-## Key Features
-
-- Continuous discovery from public founder and startup signals
-- Inbound pitch activation and outbound signal activation
-- Tavily-powered Search Intelligence layer
-- Source-specific data collection from GitHub, Product Hunt, Hacker News, arXiv, patents, accelerators, Crunchbase, and LinkedIn
-- Evidence extraction with citations and confidence
-- Specialized AI agents for entity resolution, thesis matching, founder analysis, market analysis, trust scoring, memo generation, and adversarial review
-- Deterministic scorecards and investment recommendations
-- Investor workspace with dashboard, profiles, diligence view, evidence explorer, memo, and adversarial view
-- Founder memory and learning loop for investment outcomes and source quality
-
-## High-Level Workflow
-
-```text
-Stage 0: Continuous discovery agents collect raw signals
-Stage 1: Founder enters through inbound application or outbound activation
-Stage 2: Data collection gathers pitch, web, technical, launch, funding, and research evidence
-Stage 3: AI agents analyze evidence and deterministic services score/recommend
-Stage 4: Investor reviews a decision-ready workspace and cited memo
-Stage 5: Decision outcome updates memory and improves future sourcing
+```
+Sourcing → Entity Resolution → Thesis Match → Cold-Start Check →
+  [Founder Axis | Market Axis | Idea-vs-Market Axis] (3 independent LLM calls)
+  → Build Evidence → Trust Score → Founder Score (weighted blend)
+  → Memo (deterministic, citation-grounded) → Adversarial (evidence-only, memo-blind)
+  → persisted to SQLite
 ```
 
-## Architecture Summary
+- **Backend:** Python, FastAPI, SQLite (via raw `sqlite3`, JSON-blob storage keyed by `founder_id`,
+  with `name`/`company_name`/`founder_score` as indexed columns for the ranked list).
+- **LLM calls:** OpenAI (`gpt-4o` by default, `OPENAI_MODEL` env override).
+- **Evidence retrieval:** Tavily search API.
+- **Frontend:** Streamlit, talking to the FastAPI layer over HTTP (not the SQLite store directly).
+- **Persistence contract:** every agent reads/writes against `data/schema/founder_record.schema.json`.
 
-The repository uses a modular monolith:
+Every OpenAI/Tavily client call degrades gracefully (`utils/openai_client.py`,
+`utils/tavily_client.py`) — a missing key, quota error, or network failure never crashes the pipeline;
+it falls back to a clearly-labeled stub/empty result so `run_demo.py` always completes.
 
-- `frontend/` contains the React investor workspace.
-- `backend/` contains the FastAPI application, domain model, agents, search intelligence, and integrations.
-- `database/` contains database migration areas and schema support.
-- `prompts/` contains reviewable prompt templates.
-- `test-data/`, `integration-tests/`, and `performance-tests/` support validation.
-
-Tavily is treated as a Search Intelligence provider behind a provider-neutral port. Agents use structured search results, not raw Tavily responses.
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js, React 19, TypeScript, TailwindCSS, shadcn/ui |
-| Backend | Python 3.12, FastAPI, Pydantic |
-| Database | PostgreSQL, Alembic-style migrations |
-| AI | OpenAI API, Structured Outputs, function-style structured calls |
-| Search | Tavily API as default provider |
-| Deployment | Docker, Docker Compose |
-| Testing | Pytest, frontend unit/integration/e2e test structure |
-
-## Repository Structure
-
-```text
-backend/app/
-  agents/                  Specialized AI agents
-  api/                     FastAPI routes, DTOs, mappers, errors
-  application/             Use-case orchestration services
-  domain/                  Business objects and deterministic rules
-  infrastructure/          Search, AI, persistence, cache, jobs, security
-  port/                    Provider-neutral interfaces
-
-frontend/src/
-  pages/                   Route-level screens
-  features/                Product features and workflows
-  api/                     Typed API clients
-  components/              Shared UI components
-
-database/
-  migrations/              Stage-based schema migration areas
-
-prompts/
-  claim-extraction/
-  claim-verification/
-  memo-generation/
-  memo-validation/
-  query-generation/
-  search-planning/
-```
-
-## Quick Start
-
-1. Copy the environment file.
+## Setup
 
 ```bash
-cp .env.example .env
-```
-
-1. Fill in required API keys.
-
-```text
-OPENAI_API_KEY=
-TAVILY_API_KEY=
-```
-
-1. Start the stack.
-
-```bash
-docker compose up --build
-```
-
-Expected local services:
-
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-- PostgreSQL: `localhost:5432`
-
-## Local Development
-
-Backend:
-
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+cp .env.example .env   # fill in OPENAI_API_KEY and TAVILY_API_KEY
+python run_demo.py --reset
 ```
 
-Frontend:
+Run the API and dashboard (in separate terminals, from the repo root):
 
 ```bash
-cd frontend
-npm install
-npm run dev
+uvicorn api.main:app --reload
+streamlit run ui/dashboard.py
 ```
 
-## Docker
-
-The default compose file runs PostgreSQL, backend, and frontend.
+Run tests:
 
 ```bash
-docker compose up --build
+pytest tests/ -q
 ```
 
-Use overrides for environment-specific behavior:
+## Founder Score formula
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
-```
+`founder_score.value` (0-100) is a weighted blend of three components:
 
-## Environment Variables
+| Component | Weight | Definition |
+|---|---|---|
+| Axis component | 60% | Mean of the three independent axis scores (founder / market / idea-vs-market). This is the **one** place the three axes are combined — `axis_scores` itself is never collapsed; this is a separate, persistent cross-opportunity ranking metric, not "the" investment decision. |
+| Trust component | 25% | Mean confidence across extracted `trust_claims`, with any `contradiction_flag: true` claim forced to 0 regardless of its stated confidence. |
+| Build component | 15% | `build_evidence.tier` mapped to a fixed score (`verified_working`=100, `verified_submitted`=60, `unverifiable`=20). Skipped — weight redistributed proportionally to axis/trust — when `tier == not_applicable` (no build claim to check). |
 
-| Variable | Purpose |
+`founder_score.confidence` (0-1) averages: entity-resolution confidence (if any external handle was
+given), the fraction of trust claims that cleared `unverifiable`, and the build-evidence component —
+capped at **0.5** whenever `confidence_basis == "public_footprint_fallback"` (cold start), since that's
+an explicitly lower-confidence proxy signal.
+
+`founder_score.trend` compares the new value to the most recent prior run for the same founder (by
+name match in SQLite): `improving` / `declining` if the change exceeds 2 points, else `stable`. First
+run for a founder is always `stable`.
+
+## Synthetic data
+
+Six profiles in `data/synthetic_founders/`, each built to demonstrate one behavior:
+
+| File | Demonstrates |
 |---|---|
-| `APP_ENV` | Runtime environment |
-| `DATABASE_URL` | PostgreSQL connection URL |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `OPENAI_MODEL` | Default OpenAI model |
-| `TAVILY_API_KEY` | Tavily API key |
-| `TAVILY_BASE_URL` | Tavily API base URL |
-| `TAVILY_TIMEOUT_SECONDS` | Tavily request timeout |
-| `TAVILY_MAX_RETRIES` | Tavily retry limit |
-| `APP_API_KEY` | Optional API protection key |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend API base URL |
+| `founder_01_alpha.json` | Strong founder, real-looking GitHub/funding/accelerator signals. |
+| `founder_02_beta.json` | Decent founder, a contested market-size claim for the Trust Score agent. |
+| `founder_03_gamma.json` | "Spin" profile — polished language, claims that don't hold up (backed by a scout program, 2M users, major press — all unverifiable). |
+| `founder_04_delta_coldstart.json` | No GitHub, no funding, no accelerator, but a public blog/Twitter footprint — triggers Section 5.10 cold-start fallback. |
+| `founder_05_epsilon_a_buildcheck.json` | Hackathon build claim with a **live, working demo URL** → `build_evidence.tier == "verified_working"`. |
+| `founder_06_epsilon_b_buildcheck.json` | Same claim, but the demo URL is dead and there's no findable submission → `build_evidence.tier == "unverifiable"`. |
 
-## Demo Overview
+The Epsilon-A/B contrast is guaranteed deterministically: Epsilon-A's `claimed_demo_url` points to a
+real, stable, live site so the HTTP check reliably returns 200; Epsilon-B's points to a nonexistent
+domain so the HTTP check reliably fails. This was a deliberate design choice after discovering during
+testing that Tavily's OR-based search returns loosely-relevant results even for fully fictional
+companies — a non-empty result list is not evidence on its own, so `build_evidence_agent.py` and
+`trust_score_agent.py` both require the founder/company name to literally appear in a result before
+counting it as corroboration (see `_find_corroborating_result` / the heuristic classifier).
 
-The recommended hackathon demo follows one complete vertical path:
+## Known limitations / deprioritized under time constraints
 
-```text
-Signal or pitch input
--> activated founder/company
--> evidence collection
--> agent analysis
--> scorecards
--> adversarial view
--> cited investment memo
--> investor decision
--> memory update
-```
+- **Python 3.10** was used instead of the spec's 3.11+ (that's what was available in this environment);
+  nothing in the codebase is 3.11-specific.
+- **Domain/cert timestamp check** (build.md 5.3, signal 4) is explicitly logged as skipped in every
+  `build_evidence.evidence_log` rather than implemented — it was marked "nice-to-have, not blocking" in
+  the spec, and `python-whois` was left out of scope for hackathon time.
+- **Thesis matching is keyword-based, not an LLM call** — a deliberate choice (not a shortcut): it's a
+  fast first-pass filter meant to save API calls before full scoring, so making it an LLM call would
+  undermine its own purpose.
+- **Contradiction-flag detection is inherently LLM-dependent.** An offline heuristic fallback exists so
+  the pipeline never crashes without a live key, but it cannot semantically detect a contradiction (that
+  requires comparing a claim's meaning against retrieved evidence) — it only recognizes when retrieved
+  evidence literally names the company. Full accuracy on Beta/Gamma's contested claims requires a live,
+  non-quota-limited `OPENAI_API_KEY`.
+- **`memo_agent.py`'s narrative sections (company snapshot) use a live LLM call for prose framing only**
+  — every citable fact is composed deterministically from `trust_claims`/`axis_scores`/`build_evidence`
+  before the LLM ever sees it, and the LLM is explicitly instructed not to introduce new facts. This
+  guarantees the "every claim traces to a source" rule by construction rather than by hoping the model
+  complies.
+- **`memory/scoring.py` (founder_score formula) and `agents/cold_start_agent.py`** are additional
+  modules not named in build.md's Section 3 file tree, added because Section 5.9/5.10 describe behavior
+  that needs a home; kept as thin, single-purpose modules rather than folding them into an existing
+  agent.
+- **Out of scope entirely** (per build.md Section 12): portfolio monitoring, follow-on decision logic,
+  fund operations, exit modeling, full production auth/multi-tenancy, a live continuous background
+  scanning daemon, the full Sourcing & Network Intelligence graph, and any custom dashboard styling
+  beyond Streamlit's defaults. The one live outbound signal built for extra credit is a minimal,
+  unauthenticated GitHub repository search (`agents/sourcing_agent.py::github_topic_search`).
 
-## Screenshots
+## Definition of Done — status
 
-Screenshots will be added as the frontend implementation lands.
+`run_demo.py --reset` runs end-to-end on all 6 synthetic profiles with no errors; the FastAPI layer
+serves real SQLite-backed data (`GET /founders`, `GET /founders/{id}/memo`,
+`GET /founders/{id}/build-evidence`); the Streamlit dashboard's three views were verified against the
+live API (all data-access patterns validated, no exceptions) — a visual browser screenshot wasn't
+possible in this headless environment, so if you want a final visual check, run the two `uvicorn`/
+`streamlit` commands above yourself; and the Epsilon-A/Epsilon-B pair visibly resolves to different
+`build_evidence` tiers (`verified_working` vs `unverifiable`) end to end through the API.
 
-- Dashboard
-- Evidence Explorer
-- Diligence Workspace
-- Investment Memo
-- Adversarial View
-
-## License
-
-This project is licensed under the MIT License. See `LICENSE`.
+One live note: the `OPENAI_API_KEY` provided during this build returned `insufficient_quota` (HTTP 429)
+on every call. The pipeline still runs to completion using the graceful stub fallback described above,
+but every axis score, memo narrative, and adversarial view generated so far reflects placeholder text,
+not a real model assessment — rerun `python run_demo.py --reset` once billing is resolved on that
+account to see real output. `TAVILY_API_KEY` is live and working throughout.

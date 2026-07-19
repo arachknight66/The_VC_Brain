@@ -1,0 +1,20 @@
+{
+  "name": "Sam Okafor",
+  "company_name": "Flowbench",
+  "source_channel": "hackathon_scan",
+  "raw_inputs": {
+    "deck_text": "Flowbench is a real-time collaborative data-pipeline debugger we built this weekend at TreeHacks 2025. We built a working demo end to end during the hackathon: a live web app where you can paste a pipeline config and see step-by-step execution traces with teammates in real time. We submitted our project on Devpost under the team name 'Flowbench' with a full writeup and a link to our live deployed demo. No GitHub org yet — we kept the repo private during the hackathon judging period and haven't gotten around to publishing it.",
+    "deck_images": [],
+    "github_handle": null,
+    "linkedin_url": "https://www.linkedin.com/in/sam-okafor-dev",
+    "claimed_hackathon": "TreeHacks 2025",
+    "claimed_demo_url": "https://streamlit.io",
+    "twitter_handle": "@flowbenchapp",
+    "blog_url": null,
+    "has_funding_history": false,
+    "has_accelerator_history": false,
+    "sector": "developer tools",
+    "stage": "pre-seed",
+    "geography": "US"
+  }
+}
