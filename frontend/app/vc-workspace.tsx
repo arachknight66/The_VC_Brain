@@ -102,6 +102,9 @@ type DashboardSummary = {
   average_signal_to_memo_seconds: number | null;
 };
 
+type BriefingStep = { label: string; content: string; elapsed: number };
+type ChatMessage = { id: string; role: "assistant" | "user" | "thinking"; label?: string; content: string };
+
 type CompanyWorkflow = { stage: PipelineStage; owner: string; decision: string; updatedAt: string };
 type ClaimReview = { status: ClaimReviewStatus; reviewer: string; updatedAt: string; note: string };
 type DiligenceTask = { id: string; founderId: string; title: string; owner: string; due: string; status: "open" | "in_progress" | "done" };
@@ -400,7 +403,7 @@ function Pipeline({ founders, workflow, updateCompany, saveView, onOpen, onCompa
   </div>;
 }
 
-function CompanyWorkspace({ founder, workflow, onDiligence, onMemo, updateCompany, owners }: { founder: FounderRecord | null; workflow: WorkspaceState; onDiligence: () => void; onMemo: () => void; updateCompany: (id: string, patch: Partial<CompanyWorkflow>) => void; owners: string[] }) {
+function CompanyWorkspace({ founder, workflow, onDiligence, onMemo, onOpenChat, updateCompany, owners }: { founder: FounderRecord | null; workflow: WorkspaceState; onDiligence: () => void; onMemo: () => void; onOpenChat: () => void; updateCompany: (id: string, patch: Partial<CompanyWorkflow>) => void; owners: string[] }) {
   const [tab, setTab] = useState<"decision" | "evidence" | "risks">("decision");
   if (!founder) return <Empty title="Company not found" detail="Return to the pipeline and choose a valid company." />;
   const company = workflow.companies[founder.founder_id] ?? defaultWorkflow(founder);
@@ -408,7 +411,7 @@ function CompanyWorkspace({ founder, workflow, onDiligence, onMemo, updateCompan
   const hypotheses = Array.isArray(founder.memo.investment_hypotheses) ? founder.memo.investment_hypotheses.filter((item): item is string => typeof item === "string") : [];
   const bearCase = typeof founder.adversarial_view.bear_case_summary === "string" ? founder.adversarial_view.bear_case_summary : "No adversarial analysis is available.";
   return <div className="view">
-    <div className="company-header"><div className="company-identity"><span className="company-logo">{founder.company_name[0]}</span><div><span className="section-kicker">{labelize(String(founder.raw_inputs.sector || "Unclassified"))} · {labelize(String(founder.raw_inputs.stage || "Unknown stage"))}</span><h1>{founder.company_name}</h1><p>{founder.name} · Owned by {company.owner}</p></div></div><div className="hero-actions"><button className="secondary-button" onClick={onMemo}><FileText size={15} /> Open memo</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={15} /> Continue diligence</button></div></div>
+    <div className="company-header"><div className="company-identity"><span className="company-logo">{founder.company_name[0]}</span><div><span className="section-kicker">{labelize(String(founder.raw_inputs.sector || "Unclassified"))} · {labelize(String(founder.raw_inputs.stage || "Unknown stage"))}</span><h1>{founder.company_name}</h1><p>{founder.name} · Owned by {company.owner}</p></div></div><div className="hero-actions"><button className="secondary-button" onClick={onOpenChat}><MessageSquare size={15} /> Ask VC Brain</button><button className="secondary-button" onClick={onMemo}><FileText size={15} /> Open memo</button><button className="primary-button" onClick={onDiligence}><ShieldCheck size={15} /> Continue diligence</button></div></div>
     <nav className="workspace-tabs" aria-label="Company workspace sections">{(["decision", "evidence", "risks"] as const).map((item) => <button className={tab === item ? "active" : ""} key={item} onClick={() => setTab(item)}>{labelize(item)}</button>)}</nav>
     {tab === "decision" && <div className="company-layout"><div className="company-main"><article className={`panel decision-summary ${decision.tone}`}><div className="decision-summary-head"><div><span className="section-kicker"><Lightbulb size={14} /> Current recommendation</span><h2>{decision.label}</h2><p>{decision.confidence} confidence · {decision.reason}</p></div><span className={`decision-chip ${decision.tone}`}>{company.stage}</span></div><div className="decision-columns"><div><h3>Why this could win</h3>{hypotheses.length ? hypotheses.map((item) => <p key={item}><Check size={15} />{item}</p>) : <p><AlertTriangle size={15} />No investment hypotheses cleared the evidence bar.</p>}</div><div><h3>Why this could fail</h3><p><AlertTriangle size={15} />{bearCase}</p></div></div><div className="next-action"><strong>Workflow</strong><select value={company.stage} onChange={(event) => updateCompany(founder.founder_id, { stage: event.target.value as PipelineStage })}>{PIPELINE_STAGES.map((stage) => <option key={stage}>{stage}</option>)}</select><select value={company.owner} onChange={(event) => updateCompany(founder.founder_id, { owner: event.target.value })}>{owners.map((owner) => <option key={owner}>{owner}</option>)}</select></div></article></div><aside className="company-rail"><ScoreCard founder={founder} /><article className="panel evidence-health"><h2>Evidence health</h2><div><strong>{founder.source_evidence.length}</strong><span>source records</span></div><div><strong>{founder.trust_claims.length}</strong><span>extracted claims</span></div><div><strong>{founder.trust_claims.filter((claim) => claim.contradiction_flag).length}</strong><span>contradictions</span></div></article></aside></div>}
     {tab === "evidence" && <EvidenceLedger founder={founder} />}
@@ -521,6 +524,95 @@ function Empty({ title, detail }: { title: string; detail: string }) {
   return <div className="empty-state"><BriefcaseBusiness size={24} /><strong>{title}</strong><p>{detail}</p></div>;
 }
 
+function InvestorChat({ founder, open, onOpenChange }: { founder: FounderRecord | null; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [briefingSteps, setBriefingSteps] = useState<BriefingStep[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" }); }, [messages]);
+
+  const sleep = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  const pushThinking = (label: string) => {
+    const id = `thinking-${crypto.randomUUID()}`;
+    setMessages((current) => [...current, { id, role: "thinking", label, content: "" }]);
+    return id;
+  };
+  const resolveThinking = (id: string, label: string, content: string) => setMessages((current) => current.map((message) => message.id === id ? { id, role: "assistant", label, content } : message));
+  const revealSteps = async (steps: BriefingStep[]) => {
+    for (const step of steps) {
+      const thinkingId = pushThinking(step.label);
+      await sleep(500);
+      resolveThinking(thinkingId, step.label, step.content);
+      await sleep(200);
+    }
+  };
+  const runBriefing = async () => {
+    if (!founder) return;
+    setStatus("loading");
+    setErrorMessage("");
+    try {
+      const response = await fetch(`${API_BASE}/founders/${founder.founder_id}/investor-briefing`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "The investor briefing agent failed.");
+      const steps: BriefingStep[] = data.steps ?? [];
+      setBriefingSteps(steps);
+      await revealSteps(steps);
+      setStatus("ready");
+    } catch (reason) {
+      setStatus("error");
+      setErrorMessage(reason instanceof Error ? reason.message : "The investor chat API is unavailable.");
+    }
+  };
+
+  useEffect(() => {
+    if (open && founder && status === "idle") void Promise.resolve().then(runBriefing);
+    // This component is keyed by founder ID, so a founder change remounts it with fresh state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, founder?.founder_id]);
+
+  const sendMessage = async () => {
+    if (!founder || !input.trim() || sending) return;
+    const question = input.trim();
+    setInput("");
+    setMessages((current) => [...current, { id: `user-${crypto.randomUUID()}`, role: "user", content: question }]);
+    setSending(true);
+    const thinkingId = pushThinking("Thinking it through");
+    try {
+      const response = await fetch(`${API_BASE}/founders/${founder.founder_id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: question, briefing_steps: briefingSteps }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail ?? "The chat reply failed.");
+      resolveThinking(thinkingId, "Reply", data.reply);
+    } catch (reason) {
+      resolveThinking(thinkingId, "Reply", reason instanceof Error ? reason.message : "The investor chat API is unavailable.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!founder) return null;
+  return <>
+    <button className={`chat-fab ${open ? "open" : ""}`} onClick={() => onOpenChange(!open)} aria-label={open ? "Close investor chat" : "Ask The VC Brain about this company"}>{open ? <X size={20} /> : <Bot size={20} />}</button>
+    {open && <div className="chat-panel" role="dialog" aria-modal="true" aria-label={`Investor chat about ${founder.company_name}`}>
+      <div className="chat-header"><div><span className="section-kicker"><Sparkles size={12} /> Multi-step reasoning agent</span><strong>{founder.company_name}</strong></div><button className="icon-button" onClick={() => onOpenChange(false)} aria-label="Close chat"><X size={16} /></button></div>
+      <div className="chat-body" ref={bodyRef}>
+        {status === "loading" && !messages.length && <div className="inline-empty">Reading the evidence…</div>}
+        {messages.map((message) => <div className={`chat-bubble ${message.role}`} key={message.id}>{message.role !== "user" && message.label && <span className="chat-bubble-label">{message.label}</span>}{message.role === "thinking" ? <span className="typing-dots"><i /><i /><i /></span> : <p>{message.content}</p>}</div>)}
+        {status === "error" && <div className="chat-error">{errorMessage}<button className="text-button" onClick={runBriefing}>Retry</button></div>}
+        {status === "ready" && <p className="chat-disclaimer">This is a plain-English digest of the scores, evidence, and confidence already on record — not an investment recommendation.</p>}
+      </div>
+      <form className="chat-input-row" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}><input value={input} onChange={(event) => setInput(event.target.value)} placeholder={status === "ready" ? "Ask a follow-up question…" : "Waiting for the briefing…"} disabled={status !== "ready" || sending} /><button type="submit" className="icon-button" disabled={status !== "ready" || sending || !input.trim()} aria-label="Send message"><ArrowRight size={16} /></button></form>
+    </div>}
+  </>;
+}
+
 function QuickActions({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (view: View) => void }) {
   const [query, setQuery] = useState(""); const [activeIndex, setActiveIndex] = useState(0); const ref = useRef<HTMLDivElement>(null); const actionRefs = useRef<Array<HTMLButtonElement | null>>([]); const previous = useRef<HTMLElement | null>(null);
   useEffect(() => { if (!open) return; previous.current = document.activeElement as HTMLElement; const handler = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); if (event.key === "Tab" && ref.current) { const items = [...ref.current.querySelectorAll<HTMLElement>("button,input")]; if (!items.length) return; if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); } else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); } } }; window.addEventListener("keydown", handler); return () => { window.removeEventListener("keydown", handler); previous.current?.focus(); }; }, [onClose, open]);
@@ -559,6 +651,7 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const [online, setOnline] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const notify = (message: string, tone: Toast["tone"] = "success") => {
     const id = crypto.randomUUID();
@@ -661,7 +754,7 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
     {view === "overview" && <Overview founders={founders} signals={signals} summary={summary} workflow={workspace} onOpen={(id) => navigate("company", id)} onNavigate={(next) => navigate(next)} />}
     {view === "inbox" && <SignalInbox persistedSignals={signals} onDataChanged={() => setRefresh((value) => value + 1)} onIntake={() => navigate("intake")} notify={notify} />}
     {view === "pipeline" && <Pipeline founders={founders} workflow={workspace} updateCompany={updateCompany} saveView={saveView} onOpen={(id) => navigate("company", id)} onCompare={(ids) => navigate("compare", null, ids)} notify={notify} owners={ownerOptions} />}
-    {view === "company" && <CompanyWorkspace founder={selectedFounder} workflow={workspace} updateCompany={updateCompany} onDiligence={() => navigate("diligence", selectedFounderId)} onMemo={() => navigate("memo", selectedFounderId)} owners={ownerOptions} />}
+    {view === "company" && <CompanyWorkspace founder={selectedFounder} workflow={workspace} updateCompany={updateCompany} onDiligence={() => navigate("diligence", selectedFounderId)} onMemo={() => navigate("memo", selectedFounderId)} onOpenChat={() => setChatOpen(true)} owners={ownerOptions} />}
     {view === "diligence" && <DiligenceWorkspace founder={selectedFounder} workflow={workspace} reviewClaim={reviewClaim} addTask={addTask} updateTask={updateTask} onMemo={() => navigate("memo", selectedFounderId)} />}
     {view === "compare" && <CompareCompanies founders={compareFounders} />}
     {view === "memo" && <MemoWorkspace founder={selectedFounder} workflow={workspace} updateMemo={updateMemo} />}
@@ -671,5 +764,5 @@ export default function VCWorkspace({ currentUser }: { currentUser: AppUser }) {
     {view === "lab" && <DecisionLab founders={founders} workflow={workspace} saveScenario={saveScenario} onOpen={(id) => navigate("company", id)} notify={notify} />}
     {view === "intake" && <PitchIntake onCreated={(id) => { notify("Pitch analyzed and company record created."); setRefresh((value) => value + 1); navigate("company", id); }} />}
     </>}
-  </div></main><QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} onSelect={(next) => navigate(next)} /><ToastRegion toasts={toasts} dismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} /></>;
+  </div></main><QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} onSelect={(next) => navigate(next)} /><InvestorChat key={selectedFounder?.founder_id ?? "none"} founder={selectedFounder} open={chatOpen} onOpenChange={setChatOpen} /><ToastRegion toasts={toasts} dismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} /></>;
 }
