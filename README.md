@@ -61,6 +61,7 @@ Diligence pipeline as every other lead. Per the no-collapsed-verdict design prin
 only ever sees a submission confirmation; `founder_score`/memo/adversarial view stay investor-only in
 the main dashboard view.
 
+
 Run the Next.js frontend:
 
 ```powershell
