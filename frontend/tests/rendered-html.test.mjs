@@ -124,8 +124,8 @@ test("enforces authenticated multi-user workspace persistence", async () => {
   assert.match(database, /drizzle-orm\/postgres-js/);
   assert.match(database, /DATABASE_URL/);
   assert.match(workspaceRoute, /ensureWorkspaceSchema/);
-  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS organizations/);
-  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS workspace_states/);
+  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS vc_organizations/);
+  assert.match(schemaBootstrap, /CREATE TABLE IF NOT EXISTS vc_workspace_states/);
 });
 
 test("ships the multi-reasoning investor chat box", async () => {
