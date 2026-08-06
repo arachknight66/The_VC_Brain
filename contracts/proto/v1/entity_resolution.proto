@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package vcbrain.entity_resolution.v1;
+
+option java_multiple_files = true;
+option java_package = "ai.vcbrain.entity_resolution.v1";
+option go_package = "vcbrain/entity_resolution/v1;entityresolutionv1";
+
+import "google/protobuf/timestamp.proto";
+
+message GoldenRecord {
+  string entity_id = 1;
+  string canonical_name = 2;
+  string primary_domain = 3;
+  double authority_score = 4;
+  repeated string survivorship_rules = 5;
+  google.protobuf.Timestamp valid_from = 6;
+  google.protobuf.Timestamp tx_from = 7;
+  string evidence_receipt_id = 8;
+}
+
+message ResolveRequest {
+  string candidate_id = 1;
+  string raw_name = 2;
+  string raw_domain = 3;
+}
+
+message ResolveResponse {
+  string match_status = 1; // AUTO_MERGED, STEWARD_QUEUE, NEW_ENTITY
+  double match_confidence = 2;
+  GoldenRecord golden_record = 3;
+}
+
+service EntityResolutionService {
+  rpc ResolveEntity(ResolveRequest) returns (ResolveResponse);
+}
