@@ -25,6 +25,10 @@ add_library(vcbrain-intelligence STATIC
     src/epic8_vector/vector_retriever.cpp
     src/epic9_scoring/intelligence_scores.cpp
     src/epic10_ai/ai_pipeline.cpp
+    src/data_acquisition/provider_framework.cpp
+    src/data_acquisition/cost_aware_governance.cpp
+    src/continuous/continuous_engine.cpp
+    src/quality/intelligence_quality_engine.cpp
 )
 
 target_link_libraries(vcbrain-intelligence PUBLIC
@@ -32,6 +36,7 @@ target_link_libraries(vcbrain-intelligence PUBLIC
     vcbrain-platform
     vcbrain-observability
     vcbrain-security
+    vcbrain-integration
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     fmt::fmt
@@ -39,12 +44,16 @@ target_link_libraries(vcbrain-intelligence PUBLIC
 
 enable_testing()
 
-add_executable(intelligence_unit_tests
+add_executable(vcbrain_intelligence_tests
     tests/test_discovery.cpp
     tests/test_normalization.cpp
     tests/test_evidence.cpp
     tests/test_graph_sync.cpp
     tests/test_ai_pipeline.cpp
+    tests/test_data_acquisition.cpp
+    tests/test_intelligence_pipeline_validation.cpp
+    tests/test_continuous_intelligence.cpp
+    tests/test_intelligence_quality_certification.cpp
 )
 
 target_link_libraries(intelligence_unit_tests PRIVATE
