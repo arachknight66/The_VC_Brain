@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package vcbrain.knowledge_graph.v1;
+
+option java_multiple_files = true;
+option java_package = "ai.vcbrain.knowledge_graph.v1";
+option go_package = "vcbrain/knowledge_graph/v1;knowledgegraphv1";
+
+import "google/protobuf/timestamp.proto";
+
+message GraphNode {
+  string node_id = 1;
+  repeated string labels = 2;
+  map<string, string> properties = 3;
+}
+
+message GraphEdge {
+  string edge_id = 1;
+  string source_id = 2;
+  string target_id = 3;
+  string relationship_type = 4;
+  double weight = 5;
+  google.protobuf.Timestamp valid_from = 6;
+  google.protobuf.Timestamp valid_to = 7;
+  string evidence_receipt_id = 8;
+}
+
+message TraversalRequest {
+  string start_node_id = 1;
+  int32 max_hops = 2;
+}
+
+message TraversalResponse {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+  int64 traversal_time_ms = 3;
+}
+
+service KnowledgeGraphService {
+  rpc TraverseGraph(TraversalRequest) returns (TraversalResponse);
+}

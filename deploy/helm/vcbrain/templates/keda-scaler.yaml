@@ -1,0 +1,18 @@
+{{- if .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "vcbrain.fullname" . }}-kafka-scaler
+spec:
+  scaleTargetRef:
+    name: {{ include "vcbrain.fullname" . }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.vcbrain-prod.svc.cluster.local:9092
+        topic: vcbrain.processing.validated
+        consumerGroup: vcbrain-er-group
+        lagThreshold: "{{ .Values.keda.kafkaLagThreshold }}"
+{{- end }}

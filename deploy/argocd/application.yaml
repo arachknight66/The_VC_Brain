@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vcbrain-enterprise-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/vcbrain/the-vc-brain.git'
+    targetRevision: HEAD
+    path: deploy/helm/vcbrain
+    helm:
+      valueFiles:
+        - values-production.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: vcbrain-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: vcbrain
+description: VC Brain Enterprise Venture Intelligence Platform Helm Chart
+type: application
+version: 1.0.0
+appVersion: "1.0.0-RELEASE"
+keywords:
+  - venture-capital
+  - ai-platform
+  - entity-resolution
+  - c++23
+maintainers:
+  - name: VC Brain Engineering Team
+    email: devops@vcbrain.ai

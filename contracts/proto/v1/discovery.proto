@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package vcbrain.discovery.v1;
+
+option java_multiple_files = true;
+option java_package = "ai.vcbrain.discovery.v1";
+option go_package = "vcbrain/discovery/v1;discoveryv1";
+
+import "google/protobuf/timestamp.proto";
+
+enum SourceAdapterType {
+  SOURCE_ADAPTER_TYPE_UNSPECIFIED = 0;
+  SOURCE_ADAPTER_TYPE_EXA = 1;
+  SOURCE_ADAPTER_TYPE_SERPAPI = 2;
+  SOURCE_ADAPTER_TYPE_TAVILY = 3;
+  SOURCE_ADAPTER_TYPE_GITHUB = 4;
+  SOURCE_ADAPTER_TYPE_SEC_EDGAR = 5;
+  SOURCE_ADAPTER_TYPE_PRODUCT_HUNT = 6;
+  SOURCE_ADAPTER_TYPE_OPENALEX = 7;
+  SOURCE_ADAPTER_TYPE_USPTO = 8;
+}
+
+message DiscoveryCandidate {
+  string candidate_id = 1;
+  string name = 2;
+  string primary_domain = 3;
+  double priority_score = 4;
+  double decay_factor = 5;
+  repeated SourceAdapterType sources = 6;
+  int32 github_stars = 7;
+  google.protobuf.Timestamp founding_date = 8;
+  string evidence_receipt_id = 9;
+}
+
+message ExecuteSweepRequest {
+  string query = 1;
+  repeated SourceAdapterType sources = 2;
+  int32 max_results = 3;
+}
+
+message ExecuteSweepResponse {
+  string sweep_id = 1;
+  string query = 2;
+  repeated DiscoveryCandidate candidates = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+service DiscoveryService {
+  rpc ExecuteSweep(ExecuteSweepRequest) returns (ExecuteSweepResponse);
+}

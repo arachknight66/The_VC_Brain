@@ -1,0 +1,10 @@
+VC Brain Enterprise Venture Intelligence Platform
+Copyright 2026 VC Brain Team
+
+This product includes software developed by:
+- The Apache Software Foundation (http://www.apache.org/)
+- Drogon C++ Framework (https://drogon.org/)
+- nlohmann/json (https://github.com/nlohmann/json)
+- spdlog (https://github.com/gabime/spdlog)
+- fmt (https://github.com/fmtlib/fmt)
+- Next.js & React Team (https://nextjs.org/)
