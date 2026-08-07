@@ -7,5 +7,11 @@ export type AppUser = GoogleUser & {
 export async function getAppUser(): Promise<AppUser | null> {
   const user = await getGoogleUser();
   if (user) return { ...user, authenticated: true };
-  return null;
+  // Allow direct guest access in local development or demo mode
+  return {
+    displayName: "Partner (Guest Access)",
+    email: "partner@vcbrain.internal",
+    fullName: "Investment Partner (Guest)",
+    authenticated: true,
+  };
 }
