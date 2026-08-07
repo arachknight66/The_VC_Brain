@@ -49,6 +49,9 @@ add_library(vcbrain-platform STATIC
     vcbrain-platform/src/retry_framework.cpp
     vcbrain-platform/src/tenant_engine.cpp
     vcbrain-platform/src/ga_readiness_engine.cpp
+    vcbrain-platform/src/gold_master_audit_engine.cpp
+    vcbrain-platform/src/repository_cleaner_engine.cpp
+    vcbrain-platform/src/final_gold_master_verification.cpp
 )
 target_link_libraries(vcbrain-platform PUBLIC vcbrain-core yaml-cpp::yaml-cpp spdlog::spdlog)
 

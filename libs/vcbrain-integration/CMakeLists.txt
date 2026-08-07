@@ -42,6 +42,9 @@ add_executable(platform_e2e_integration_tests
     tests/test_enterprise_pilot_deployment.cpp
     tests/test_analyst_workflow_validation.cpp
     tests/test_ga_readiness_certification.cpp
+    tests/test_gold_master_audit.cpp
+    tests/test_repository_maintenance.cpp
+    tests/test_final_gold_master_verification.cpp
 )
 
 target_link_libraries(platform_e2e_integration_tests PRIVATE
