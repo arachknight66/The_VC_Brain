@@ -39,6 +39,9 @@ add_executable(platform_e2e_integration_tests
     tests/test_platform_e2e_integration.cpp
     tests/test_platform_hardening_chaos.cpp
     tests/test_platform_acceptance_verification.cpp
+    tests/test_enterprise_pilot_deployment.cpp
+    tests/test_analyst_workflow_validation.cpp
+    tests/test_ga_readiness_certification.cpp
 )
 
 target_link_libraries(platform_e2e_integration_tests PRIVATE

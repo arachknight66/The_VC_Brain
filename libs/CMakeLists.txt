@@ -47,6 +47,8 @@ add_library(vcbrain-platform STATIC
     vcbrain-platform/src/config_engine.cpp
     vcbrain-platform/src/circuit_breaker.cpp
     vcbrain-platform/src/retry_framework.cpp
+    vcbrain-platform/src/tenant_engine.cpp
+    vcbrain-platform/src/ga_readiness_engine.cpp
 )
 target_link_libraries(vcbrain-platform PUBLIC vcbrain-core yaml-cpp::yaml-cpp spdlog::spdlog)
 
@@ -55,6 +57,7 @@ add_library(vcbrain-observability STATIC
     vcbrain-observability/src/logging_framework.cpp
     vcbrain-observability/src/metrics_framework.cpp
     vcbrain-observability/src/health_framework.cpp
+    vcbrain-observability/src/analyst_workflow_analytics.cpp
 )
 target_link_libraries(vcbrain-observability PUBLIC vcbrain-core vcbrain-platform spdlog::spdlog fmt::fmt)
 
