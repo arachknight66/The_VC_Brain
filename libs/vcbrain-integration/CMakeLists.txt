@@ -37,6 +37,8 @@ enable_testing()
 
 add_executable(platform_e2e_integration_tests
     tests/test_platform_e2e_integration.cpp
+    tests/test_platform_hardening_chaos.cpp
+    tests/test_platform_acceptance_verification.cpp
 )
 
 target_link_libraries(platform_e2e_integration_tests PRIVATE

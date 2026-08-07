@@ -1,0 +1,24 @@
+# GCP GKE Enterprise Production Profile for VC Brain
+gke:
+  clusterName: vcbrain-gke-prod
+  region: us-central1
+  releaseChannel: REGULAR
+  nodePools:
+    - name: vcbrain-c3-nodes
+      machineType: c3-standard-8
+      minNodeCount: 4
+      maxNodeCount: 32
+      initialNodeCount: 6
+      diskType: pd-ssd
+      diskSizeGb: 100
+      kmsKeyName: "projects/vcbrain-prod/locations/us-central1/keyRings/vcbrain-ring/cryptoKeys/gke-key"
+
+ingress:
+  provider: GKE Gateway Controller
+  type: External HTTP(S) Load Balancer
+  managedSslCertificate: vcbrain-gcp-cert
+
+storage:
+  cockroachdb: pd-ssd
+  neo4j: pd-extreme
+  evidence_gcs: gcs-bucket-lock-compliance

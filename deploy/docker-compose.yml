@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  vcbrain-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - SPIFFE_ENDPOINT_SOCKET=/tmp/spire-agent/public/api.sock
+    restart: always
+    healthcheck:
+      test: ["CMD", "/app/svc-entity-resolution-engine", "--health-check"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  vcbrain-workspace:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    restart: always

@@ -1,0 +1,29 @@
+# AWS EKS Enterprise Production Profile for VC Brain
+vpc:
+  cidr: 10.100.0.0/16
+  subnets:
+    public: ["10.100.1.0/24", "10.100.2.0/24"]
+    private: ["10.100.10.0/24", "10.100.20.0/24"]
+
+eks:
+  clusterName: vcbrain-eks-prod
+  version: "1.30"
+  nodeGroups:
+    - name: vcbrain-c6i-nodes
+      instanceType: c6i.2xlarge
+      minSize: 4
+      maxSize: 32
+      desiredSize: 6
+      storageSizeGb: 100
+      ebsKmsKeyArn: "arn:aws:kms:us-east-1:123456789012:key/vcbrain-ebs"
+
+ingress:
+  provider: AWS Load Balancer Controller
+  type: Network Load Balancer (NLB)
+  scheme: internet-facing
+  tlsCertificateArn: "arn:aws:acm:us-east-1:123456789012:certificate/vcbrain-wildcard"
+
+storage:
+  cockroachdb: gp3-encrypted
+  neo4j: io2-high-iops
+  evidence_s3: aws-s3-object-lock-worm

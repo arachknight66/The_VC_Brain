@@ -1,0 +1,62 @@
+name: VC Brain Production Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up C++23 Compiler
+        run: sudo apt-get update && sudo apt-get install -y g++-14 cmake ninja-build
+
+      - name: Build C++23 Libraries and Services
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=23
+          cmake --build build --config Release -j$(nproc)
+
+      - name: Execute C++23 GoogleTest Acceptance Runner
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Set up Node.js for Next.js Frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Next.js Production Build
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+  container-release-sbom:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Cosign & Syft SBOM Generator
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Build Distroless Container Image
+        run: |
+          docker build -t gcr.io/vcbrain-prod/svc-entity-resolution-engine:${{ github.ref_name }} -f deploy/Dockerfile .
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft gcr.io/vcbrain-prod/svc-entity-resolution-engine:${{ github.ref_name }} -o cyclonedx-json > sbom.json
+
+      - name: Upload Release SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-vcbrain-${{ github.ref_name }}
+          path: sbom.json

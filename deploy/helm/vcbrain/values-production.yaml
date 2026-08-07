@@ -1,0 +1,40 @@
+# Production High-Availability Values for VC Brain Helm Chart
+replicaCount: 6
+
+image:
+  repository: gcr.io/vcbrain-prod/svc-entity-resolution-engine
+  pullPolicy: Always
+  tag: "1.0.0-RELEASE"
+
+serviceAccount:
+  create: true
+  name: "vcbrain-sa-prod"
+
+service:
+  type: ClusterIP
+  port: 8080
+  metricsPort: 9090
+
+resources:
+  limits:
+    cpu: "8000m"
+    memory: "16Gi"
+  requests:
+    cpu: "2000m"
+    memory: "4Gi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 4
+  maxReplicas: 32
+  targetCPUUtilizationPercentage: 70
+
+keda:
+  enabled: true
+  kafkaLagThreshold: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false

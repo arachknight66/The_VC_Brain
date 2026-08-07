@@ -1,0 +1,34 @@
+# Standard Default Values for VC Brain Helm Chart
+replicaCount: 2
+
+image:
+  repository: gcr.io/vcbrain-prod/svc-entity-resolution-engine
+  pullPolicy: IfNotPresent
+  tag: "1.0.0-RELEASE"
+
+serviceAccount:
+  create: true
+  name: "vcbrain-sa"
+
+service:
+  type: ClusterIP
+  port: 8080
+  metricsPort: 9090
+
+resources:
+  limits:
+    cpu: "2000m"
+    memory: "4Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+
+keda:
+  enabled: true
+  kafkaLagThreshold: 1000
