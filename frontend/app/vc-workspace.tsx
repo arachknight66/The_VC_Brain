@@ -300,44 +300,55 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
       <main className="main-content">
         {/* Module 1: Executive Dashboard */}
         {view === "overview" && (
-          <div className="view">
-            <section className="hero-row">
+          <div className="view dashboard-view">
+            <section className="dashboard-header">
               <div>
-                <span className="section-kicker"><Sparkles size={14} /> Investment workspace / Monday, Aug 9</span>
+                <span className="section-kicker"><Sparkles size={13} /> Investment workspace</span>
                 <h1>Good morning, {user.displayName.split(" ")[0]}</h1>
-                <p>Here is what changed across your active thesis, sourcing queue, and diligence work.</p>
+                <p>Prioritized research across your active thesis, sourcing queue, and diligence work.</p>
               </div>
               <div className="hero-actions">
                 <button className="secondary-button" onClick={() => setView("search")}><Search size={14} /> Find a company</button>
                 <button className="primary-button" onClick={() => setView("discovery")}><Plus size={14} /> Add opportunity</button>
               </div>
             </section>
-            <section className="metrics-grid">
+
+            <section className="metrics-grid" aria-label="Workspace metrics">
               <article className="metric-card"><div className="metric-icon blue"><Target size={17} /></div><div><p>Active opportunities</p><strong>{summary.active_opportunities}</strong><small>Across your pipeline</small></div><span className="metric-trend">+12%</span></article>
               <article className="metric-card"><div className="metric-icon violet"><FileText size={17} /></div><div><p>Memos ready</p><strong>{summary.memo_ready}</strong><small>Awaiting review</small></div><span className="metric-trend">+4</span></article>
               <article className="metric-card"><div className="metric-icon green"><ShieldCheck size={17} /></div><div><p>Verified claims</p><strong>{summary.verified_claims}</strong><small>Evidence-backed</small></div><span className="metric-trend">+18%</span></article>
               <article className="metric-card"><div className="metric-icon orange"><Radar size={17} /></div><div><p>New signals</p><strong>{summary.raw_signals}</strong><small>Last 7 days</small></div><span className="metric-trend">Live</span></article>
             </section>
-            <section className="brief-grid">
-              <article className="panel">
-                <h2>Investment Pipeline Summary</h2>
-                <div className="metric-row">
-                  <div><strong>{summary.founder_records}</strong><span>Total Records</span></div>
-                  <div><strong>{summary.memo_ready}</strong><span>Memos Ready</span></div>
-                  <div><strong>{summary.high_confidence_scores}</strong><span>High Confidence</span></div>
-                  <div><strong>{summary.verified_claims}</strong><span>Verified Claims</span></div>
+
+            <section className="dashboard-grid dashboard-grid-primary">
+              <article className="panel intelligence-panel">
+                <div className="panel-heading"><div><h2>Recent analyses</h2><p>Highest-priority founder and company work</p></div><button className="text-button" onClick={() => setView("founder")}>View all <ArrowRight size={13} /></button></div>
+                <div className="analysis-list">
+                  {founders.slice(0, 4).map((f, index) => (
+                    <button key={f.founder_id} className="analysis-row" onClick={() => { setSelectedFounderId(f.founder_id); setView("company"); }}>
+                      <span className={`avatar ${["indigo", "cyan", "violet", "green"][index % 4]}`}>{initials(f.company_name)}</span>
+                      <span className="founder-copy"><strong>{f.company_name}</strong><small>{f.name} · {labelize(f.source_channel)}</small></span>
+                      <span className="signal-tag">{getDecision(f).label}</span><span className="score-badge"><strong>{Math.round(f.founder_score.value)}</strong><small>score</small></span>
+                    </button>
+                  ))}
+                  {!founders.length && <p className="empty-inline">No founder analyses have arrived yet.</p>}
                 </div>
               </article>
-              <article className="panel">
-                <h2>Top Recently Discovered Companies</h2>
-                {founders.slice(0, 5).map(f => (
-                  <div key={f.founder_id} className="queue-row" onClick={() => { setSelectedFounderId(f.founder_id); setView("company"); }}>
-                    <span><strong>{f.company_name}</strong><small>{f.name}</small></span>
-                    <span className="decision-chip positive">{Math.round(f.founder_score.value)} Score</span>
-                  </div>
-                ))}
+              <article className="panel intelligence-panel">
+                <div className="panel-heading"><div><h2>AI curated signals</h2><p>Evidence-backed changes worth reviewing</p></div><span className="live-dot">Live</span></div>
+                <div className="feed-list">
+                  {signals.slice(0, 4).map((signal, index) => <div className="feed-item" key={signal.signal_id}><span className={`feed-icon ${["github", "funding", "web", "people"][index % 4]}`}><Zap size={14} /></span><div><strong>{signal.title}</strong><p>{signal.summary}</p><small>{labelize(signal.source)} · {formatDate(signal.observed_at, "Recently")}</small></div></div>)}
+                  {!signals.length && <p className="empty-inline">Signal providers are warming up.</p>}
+                </div>
               </article>
             </section>
+
+            <section className="dashboard-grid dashboard-grid-secondary">
+              <article className="panel momentum-panel"><div className="panel-heading"><div><h2>Watchlist momentum</h2><p>Opportunity coverage across the current workspace</p></div><button className="text-button" onClick={() => setView("watchlists")}>Open watchlist <ArrowRight size={13} /></button></div><div className="chart-summary"><div><strong>{summary.founder_records}</strong><span>tracked records</span></div><div><strong>{summary.average_founder_score ? Math.round(summary.average_founder_score) : "—"}</strong><span>average score</span></div><div><strong>{summary.high_confidence_scores}</strong><span>high confidence</span></div></div><div className="bar-chart" aria-label="Watchlist momentum chart">{[42, 58, 46, 72, 65, 82, 76, 92].map((height, index) => <span key={index}><i style={{ height: `${height}%` }} /></span>)}</div><div className="chart-axis"><span>Mon</span><span>Wed</span><span>Fri</span><span>Sun</span></div></article>
+              <article className="panel thesis-panel"><div className="panel-heading"><div><h2>Thesis coverage</h2><p>Evidence gates across active work</p></div><ShieldCheck size={16} /></div><div className="thesis-row"><div><span>Build evidence</span><span>{summary.verified_builds}/{summary.founder_records || 0}</span></div><div className="progress"><i style={{ width: `${summary.founder_records ? Math.min(100, (summary.verified_builds / summary.founder_records) * 100) : 0}%` }} /></div></div><div className="thesis-row"><div><span>Verified claims</span><span>{summary.verified_claims}/{summary.verified_claims + summary.unverified_claims || 0}</span></div><div className="progress"><i style={{ width: `${summary.verified_claims + summary.unverified_claims ? (summary.verified_claims / (summary.verified_claims + summary.unverified_claims)) * 100 : 0}%` }} /></div></div><div className="thesis-row"><div><span>Memo readiness</span><span>{summary.memo_ready}/{summary.founder_records || 0}</span></div><div className="progress"><i style={{ width: `${summary.founder_records ? Math.min(100, (summary.memo_ready / summary.founder_records) * 100) : 0}%` }} /></div></div></article>
+            </section>
+
+            <section className="panel discoveries-panel"><div className="panel-heading"><div><h2>Recent discoveries</h2><p>Newest opportunities entering the research queue</p></div><button className="text-button" onClick={() => setView("discovery")}>Discovery radar <ArrowRight size={13} /></button></div><div className="discovery-table"><div className="discovery-table-head"><span>Company</span><span>Founder</span><span>Source</span><span>Score</span></div>{founders.slice(0, 5).map(f => <button key={f.founder_id} className="discovery-table-row" onClick={() => { setSelectedFounderId(f.founder_id); setView("company"); }}><strong>{f.company_name}</strong><span>{f.name}</span><span>{labelize(f.source_channel)}</span><b>{Math.round(f.founder_score.value)}</b></button>)}</div></section>
           </div>
         )}
 

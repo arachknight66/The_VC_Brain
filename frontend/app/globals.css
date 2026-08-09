@@ -59,7 +59,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 a { color: inherit; }
 .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 
-.app-shell { min-height: 100vh; display: flex; }
+.app-shell { min-height: 100vh; display: block !important; overflow-x: clip; }
 .app-shell > .topbar, .app-shell > .main-content { width: calc(100% - 236px); margin-left: 236px; }
 .app-shell > .main-content { min-width: 0; }
 @media (max-width: 820px) {
@@ -164,6 +164,51 @@ kbd { padding: 3px 6px; border: 1px solid #dfe5ee; border-radius: 5px; backgroun
 .icon-button i { position: absolute; width: 6px; height: 6px; background: #f35c5c; border: 2px solid white; border-radius: 50%; top: 6px; right: 6px; }
 .view { padding: 30px 38px 48px; max-width: 1440px; margin: 0 auto; animation: appear .25s ease both; }
 @keyframes appear { from { opacity: .35; transform: translateY(3px); } }
+
+/* Dashboard command-center composition */
+html, body { overflow-x: hidden; }
+.dashboard-view { width: 100%; max-width: none; padding: 24px 32px 42px; }
+.dashboard-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+.dashboard-header h1 { margin: 6px 0 4px; font-size: clamp(22px, 2vw, 30px); line-height: 1.1; }
+.dashboard-header p { margin: 0; color: var(--muted); font-size: 12px; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; min-width: 0; margin-bottom: 14px; }
+.dashboard-grid > * { min-width: 0; }
+.dashboard-grid-primary > :first-child { grid-column: span 8; }
+.dashboard-grid-primary > :last-child { grid-column: span 4; }
+.dashboard-grid-secondary > :first-child { grid-column: span 8; }
+.dashboard-grid-secondary > :last-child { grid-column: span 4; }
+.intelligence-panel { min-height: 220px; overflow: hidden; }
+.empty-inline { padding: 20px 10px; color: var(--muted); font-size: 11px; }
+.metric-trend { margin-left: auto; align-self: flex-start; color: var(--green); font-size: 10px; font-weight: 700; }
+.discovery-table { padding: 0 18px 10px; overflow-x: auto; }
+.discovery-table-head, .discovery-table-row { min-width: 540px; display: grid; grid-template-columns: 1.4fr 1fr 1fr .35fr; gap: 16px; align-items: center; }
+.discovery-table-head { padding: 9px 10px 7px; color: #8a97aa; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.discovery-table-row { width: 100%; padding: 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; font-size: 10px; }
+.discovery-table-row + .discovery-table-row { margin-top: 2px; }
+.discovery-table-row:hover { background: var(--control); border-color: var(--line); }
+.discovery-table-row span { color: var(--muted); }
+.discovery-table-row b { color: var(--blue); font-size: 13px; }
+@media (max-width: 1100px) {
+  .dashboard-view { padding-inline: 24px; }
+  .dashboard-grid-primary > :first-child, .dashboard-grid-secondary > :first-child { grid-column: span 7; }
+  .dashboard-grid-primary > :last-child, .dashboard-grid-secondary > :last-child { grid-column: span 5; }
+}
+@media (max-width: 820px) {
+  .dashboard-view { padding: 20px 16px 32px; }
+  .dashboard-header { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .dashboard-grid-primary > *, .dashboard-grid-secondary > * { grid-column: 1 / -1 !important; }
+  .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .topbar { padding-inline: 16px; }
+  .topbar-title { min-width: 0; }
+  .topbar-title span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .command-search { display: none; }
+}
+@media (max-width: 520px) {
+  .metrics-grid { grid-template-columns: 1fr; }
+  .hero-actions { width: 100%; }
+  .hero-actions > * { flex: 1; }
+  .metric-card { min-height: 86px; padding: 14px; }
+}
 .section-kicker { color: var(--blue); font-size: 10px; font-weight: 720; letter-spacing: .05em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { letter-spacing: -.045em; }
