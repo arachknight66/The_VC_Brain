@@ -231,19 +231,28 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { id: "1", role: "assistant", content: "Welcome to VC Brain AI Copilot. Ask any evidence-backed investment thesis or founder question." }
   ]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/dashboard/summary`).then(res => res.json()).then(setSummary).catch(() => {});
-    fetch(`${API_BASE}/founders`).then(res => res.json()).then(data => {
-      const records = Array.isArray(data) ? data : Array.isArray(data?.founders) ? data.founders : Array.isArray(data?.records) ? data.records : [];
+    let cancelled = false;
+    Promise.all([
+      fetch(`${API_BASE}/dashboard/summary`).then(res => { if (!res.ok) throw new Error("summary"); return res.json(); }),
+      fetch(`${API_BASE}/founders`).then(res => { if (!res.ok) throw new Error("founders"); return res.json(); }),
+      fetch(`${API_BASE}/signals`).then(res => { if (!res.ok) throw new Error("signals"); return res.json(); }),
+    ]).then(([nextSummary, founderData, signalData]) => {
+      if (cancelled) return;
+      const records = Array.isArray(founderData) ? founderData : Array.isArray(founderData?.founders) ? founderData.founders : Array.isArray(founderData?.records) ? founderData.records : [];
+      setSummary(nextSummary);
       setFounders(records);
+      setSignals(signalData.signals || []);
       if (records.length > 0 && !selectedFounderId) setSelectedFounderId(records[0].founder_id);
-    }).catch(() => {});
-    fetch(`${API_BASE}/signals`).then(res => res.json()).then(data => setSignals(data.signals || [])).catch(() => {});
+    }).catch(() => { if (!cancelled) setDataError("Unable to load VC Brain intelligence. Retry the workspace to reconnect to the research services."); }).finally(() => { if (!cancelled) setDataLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const activeFounder = founders.find(f => f.founder_id === selectedFounderId) || founders[0] || null;
@@ -298,6 +307,8 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
 
       {/* Main View Router */}
       <main className="main-content">
+        {dataLoading && <div className="workspace-banner"><div className="state-spinner" /><span>Loading verified intelligence...</span></div>}
+        {dataError && <div className="workspace-banner error-state"><AlertTriangle size={16} /><span>{dataError}</span><button className="text-button" onClick={() => window.location.reload()}>Retry</button></div>}
         {/* Module 1: Executive Dashboard */}
         {view === "overview" && (
           <div className="view dashboard-view">
@@ -419,12 +430,12 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
             <h1>Market Intelligence & Emerging Sector Trends</h1>
             <section className="brief-grid">
               <article className="panel">
-                <h2>Sector Funding Heatmap</h2>
-                <p>Top Sectors: AI Infrastructure (42%), Vector Accelerators (28%), Autonomous Robotics (18%), Synthetic Bio (12%).</p>
+                <h2>Sector Funding Activity</h2>
+                <p className="empty-inline">No verified sector funding dataset is available for this workspace.</p>
               </article>
               <article className="panel">
                 <h2>Technology Trend Radar</h2>
-                <p>High Velocity: C++23 Native Engines, Qdrant HNSW ANN, SPIFFE Zero-Trust Mesh.</p>
+                <p className="empty-inline">No verified trend signals are available for this workspace.</p>
               </article>
             </section>
           </div>
@@ -524,6 +535,9 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
         {view === "mdm" && <div className="view"><h1>Entity Resolution & MDM Engine</h1><p>4-Pass candidate blocking and pairwise ML matching active.</p></div>}
         {view === "evidence" && <div className="view"><h1>Evidence Receipts Audit Trail</h1><p>SHA-256 digital evidence receipts stored in S3 WORM Object Lock.</p></div>}
         {view === "metrics" && <div className="view"><h1>System Health & Telemetry</h1><p>OpenTelemetry & Prometheus metric telemetry active.</p></div>}
+        {view === "company" && !activeFounder && <div className="view"><div className="module-empty"><Building2 size={22} /><h1>Company Intelligence</h1><p>Select a company from recent analyses or load verified founder records to begin research.</p><button className="primary-button" onClick={() => setView("discovery")}>Open Discovery Radar <ArrowRight size={14} /></button></div></div>}
+        {view === "founder" && !activeFounder && <div className="view"><div className="module-empty"><Users size={22} /><h1>Founder Intelligence</h1><p>No verified founder record is selected yet.</p><button className="secondary-button" onClick={() => setView("search")}>Search founders <Search size={14} /></button></div></div>}
+        {view === "reports" && !activeFounder && <div className="view"><div className="module-empty"><FileText size={22} /><h1>Reports & Memos</h1><p>No company is selected for memo generation.</p><button className="secondary-button" onClick={() => setView("pipeline")}>Open Deal Flow <ArrowRight size={14} /></button></div></div>}
       </main>
     </div>
   );
