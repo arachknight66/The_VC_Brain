@@ -144,6 +144,9 @@ type Toast = { id: string; message: string; tone: "success" | "info" | "warning"
 type SessionUser = AppUser & { role?: "admin" | "member" | "viewer"; organizationName?: string };
 type SyncStatus = "loading" | "saved" | "saving" | "conflict" | "error";
 type ThemeMode = "light" | "dark";
+type HealthPayload = { status: string; version?: string; timestamp?: string; subsystems?: Record<string, { status: string; provider?: string; latency_p95_ms?: number; nodes?: number }> };
+type DiscoveryPayload = { candidates?: Array<{ candidate_id: string; name: string; primary_domain: string; priority_score: number; sources: string[]; evidence_receipt_id?: string }>; count?: number };
+type GraphPayload = { nodes?: Array<{ id: string; labels: string[]; properties: Record<string, unknown> }>; edges?: Array<{ edge_id: string; source_id: string; target_id: string; type: string; weight: number }> };
 
 const API_BASE = "/api/vc";
 const EMPTY_SUMMARY: DashboardSummary = { founder_records: 0, active_opportunities: 0, raw_signals: 0, memo_ready: 0, high_confidence_scores: 0, verified_builds: 0, verified_claims: 0, unverified_claims: 0, average_founder_score: 0, average_score_confidence: 0, average_signal_to_memo_seconds: null };
@@ -233,6 +236,11 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
   ]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthPayload | null>(null);
+  const [discovery, setDiscovery] = useState<DiscoveryPayload | null>(null);
+  const [graph, setGraph] = useState<GraphPayload | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -255,7 +263,34 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE}/v1/system/health`).then(res => res.ok ? res.json() : null),
+      fetch(`${API_BASE}/v1/discovery/candidates`).then(res => res.ok ? res.json() : null),
+      Promise.all([
+        fetch(`${API_BASE}/v1/graph/nodes`).then(res => res.ok ? res.json() : null),
+        fetch(`${API_BASE}/v1/graph/edges`).then(res => res.ok ? res.json() : null),
+      ]).then(([nodes, edges]) => ({ ...(nodes || {}), ...(edges || {}) })),
+    ]).then(([nextHealth, nextDiscovery, nextGraph]) => { setHealth(nextHealth); setDiscovery(nextDiscovery); setGraph(nextGraph); }).catch(() => undefined);
+  }, []);
+
   const activeFounder = founders.find(f => f.founder_id === selectedFounderId) || founders[0] || null;
+
+  async function askCopilot() {
+    const question = activeCopilotQuery.trim();
+    if (!question || copilotLoading) return;
+    if (!activeFounder) { setCopilotError("Select a founder or company before asking a grounded question."); return; }
+    setCopilotError(null); setCopilotLoading(true);
+    setChatMessages(messages => [...messages, { id: String(Date.now()), role: "user", content: question }]);
+    try {
+      const response = await fetch(`${API_BASE}/founders/${activeFounder.founder_id}/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }) });
+      if (!response.ok) throw new Error("chat");
+      const result = await response.json();
+      setChatMessages(messages => [...messages, { id: String(Date.now() + 1), role: "assistant", content: result.answer || result.response || result.message || "No grounded answer was returned." }]);
+      setActiveCopilotQuery("");
+    } catch { setCopilotError("VC Brain couldn't complete this analysis. Check the selected record and retry."); }
+    finally { setCopilotLoading(false); }
+  }
 
   return (
     <div className={`app-shell ${theme}`}>
@@ -441,21 +476,6 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
           </div>
         )}
 
-        {/* Module 6: Knowledge Graph Explorer */}
-        {view === "graph" && (
-          <div className="view">
-            <h1>Knowledge Graph Explorer (Neo4j Property Graph)</h1>
-            <article className="panel">
-              <h2>Active Ontology Graph</h2>
-              <p>Total Nodes: 3,340,700 | Total Edges: 14,820,900 | Louvain Clusters: 142</p>
-              <div style={{ background: "var(--color-bg-secondary)", height: "300px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Globe2 size={48} />
-                <span style={{ marginLeft: "1rem" }}>Interactive Neo4j Causal Graph Visualizer Active</span>
-              </div>
-            </article>
-          </div>
-        )}
-
         {/* Module 7: Semantic Search */}
         {view === "search" && (
           <div className="view">
@@ -491,27 +511,7 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
         )}
 
         {/* Module 10: AI Copilot */}
-        {view === "copilot" && (
-          <div className="view">
-            <h1>AI Copilot & Multi-hop Reasoning Engine</h1>
-            <div className="panel" style={{ height: "400px", overflowY: "auto" }}>
-              {chatMessages.map(msg => (
-                <div key={msg.id} style={{ marginBottom: "1rem" }}>
-                  <strong>{msg.role === "assistant" ? "VC Brain AI" : "Investor"}:</strong>
-                  <p>{msg.content}</p>
-                </div>
-              ))}
-            </div>
-            <div className="scanner-query">
-              <input value={activeCopilotQuery} onChange={e => setActiveCopilotQuery(e.target.value)} placeholder="Ask an investment thesis or founder evidence question..." />
-              <button className="primary-button" onClick={() => {
-                if (!activeCopilotQuery) return;
-                setChatMessages([...chatMessages, { id: String(Date.now()), role: "user", content: activeCopilotQuery }, { id: String(Date.now()+1), role: "assistant", content: `Evidence-backed analysis for '${activeCopilotQuery}': Grounded in 14 verified receipts (SHA-256). Confidence score: 94%.` }]);
-                setActiveCopilotQuery("");
-              }}><Bot size={16} /> Ask Copilot</button>
-            </div>
-          </div>
-        )}
+        {view === "copilot" && <div className="view copilot-view"><div className="module-heading"><div><span className="section-kicker"><Bot size={13} /> Research workspace</span><h1>AI Copilot</h1><p>Ask grounded questions about the selected record and inspect the evidence behind each answer.</p></div><span className="context-pill">{activeFounder ? activeFounder.company_name : "No active context"}</span></div><div className="copilot-layout"><section className="copilot-conversation">{chatMessages.length === 1 && <div className="copilot-start"><h2>How can VC Brain help?</h2><p>Start with a question about the active company, founder, evidence, or decision.</p><div className="suggestion-row">{["What supports this founder score?", "What are the key risks?", "Summarize the evidence gaps."].map(prompt => <button key={prompt} onClick={() => setActiveCopilotQuery(prompt)}>{prompt}</button>)}</div></div>}<div className="message-list">{chatMessages.map(msg => <article key={msg.id} className={`copilot-message ${msg.role}`}><span>{msg.role === "assistant" ? "VC Brain" : "You"}</span><p>{msg.content}</p></article>)}</div></section><aside className="copilot-context"><h2>Current context</h2>{activeFounder ? <><strong>{activeFounder.company_name}</strong><span>{activeFounder.name}</span><div className="context-stat"><b>{Math.round(activeFounder.founder_score.value)}</b><span>Founder score</span></div><div className="context-stat"><b>{activeFounder.source_evidence.length}</b><span>Evidence receipts</span></div><small>Grounded in persisted founder, source, and trust-claim records.</small></> : <p>Select a company from the dashboard to activate context.</p>}</aside></div><div className="copilot-composer"><textarea value={activeCopilotQuery} onChange={e => setActiveCopilotQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void askCopilot(); } }} placeholder="Ask VC Brain about a company, founder, market, thesis, or evidence..." /><button className="primary-button" disabled={copilotLoading} onClick={() => void askCopilot()}>{copilotLoading ? "Analyzing..." : "Send"} <ArrowRight size={14} /></button></div>{copilotError && <p className="copilot-error">{copilotError}</p>}</div>}
 
         {/* Module 11: Administration */}
         {view === "admin" && (
@@ -530,11 +530,12 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
           </div>
         )}
 
-        {/* Platform Modules: Discovery, MDM, Evidence, Metrics */}
-        {view === "discovery" && <div className="view"><h1>Discovery Radar</h1><p>Scanning Exa, SerpAPI, GitHub, SEC EDGAR...</p></div>}
-        {view === "mdm" && <div className="view"><h1>Entity Resolution & MDM Engine</h1><p>4-Pass candidate blocking and pairwise ML matching active.</p></div>}
-        {view === "evidence" && <div className="view"><h1>Evidence Receipts Audit Trail</h1><p>SHA-256 digital evidence receipts stored in S3 WORM Object Lock.</p></div>}
-        {view === "metrics" && <div className="view"><h1>System Health & Telemetry</h1><p>OpenTelemetry & Prometheus metric telemetry active.</p></div>}
+        {/* Platform Modules */}
+        {view === "discovery" && <div className="view operational-view"><div className="module-heading"><div><span className="section-kicker"><Radar size={13} /> Platform operation</span><h1>Discovery Radar</h1><p>Continuous discovery across configured intelligence sources.</p></div><button className="primary-button" onClick={() => setView("search")}><Search size={14} /> Review candidates</button></div><div className="ops-stats"><span><b>{discovery?.count ?? 0}</b>Entities found</span><span><b>{discovery?.candidates?.length ?? 0}</b>New signals</span><span><b>{discovery ? "Completed" : "Pending"}</b>Last scan</span></div><section className="panel table-panel"><div className="panel-heading"><div><h2>Newly discovered companies</h2><p>Priority-ranked candidates from the configured discovery service.</p></div><span className="live-dot">{discovery ? "Synced" : "Waiting"}</span></div>{discovery?.candidates?.map(candidate => <div className="ops-row" key={candidate.candidate_id}><strong>{candidate.name}</strong><span>{candidate.primary_domain}</span><span>{candidate.sources.join(" · ")}</span><b>{Math.round(candidate.priority_score * 100)}%</b></div>) || <p className="empty-inline">No candidates returned.</p>}</section></div>}
+        {view === "mdm" && <div className="view operational-view"><div className="module-heading"><div><span className="section-kicker"><Target size={13} /> Review workstation</span><h1>Entity Resolution</h1><p>Review canonical records and source authority before making identity decisions.</p></div><button className="secondary-button" onClick={() => setView("company")}>Open company intelligence <ArrowRight size={14} /></button></div><section className="panel table-panel"><div className="panel-heading"><div><h2>Golden master records</h2><p>Persisted records available from the resolution engine.</p></div></div>{founders.slice(0, 8).map(record => <div className="ops-row" key={record.founder_id}><strong>{record.company_name}</strong><span>{record.name}</span><span>{Math.round((record.entity_resolution_confidence || 0) * 100)}% confidence</span><b>{record.source_evidence.length} sources</b></div>) || <p className="empty-inline">No records available.</p>}</section></div>}
+        {view === "evidence" && <div className="view operational-view"><div className="module-heading"><div><span className="section-kicker"><FileCheck2 size={13} /> Forensic audit</span><h1>Evidence Receipts</h1><p>Inspect source-backed claims attached to persisted founder records.</p></div></div><section className="panel table-panel"><div className="panel-heading"><div><h2>Receipt explorer</h2><p>Claims, sources, confidence, and verification state.</p></div></div>{founders.flatMap(record => record.source_evidence.slice(0, 2).map((evidence, index) => <div className="ops-row" key={`${record.founder_id}-${index}`}><strong>{record.company_name}</strong><span>{evidence.title}</span><span>{evidence.source}</span><b>{Math.round(evidence.confidence * 100)}%</b></div>)) || <p className="empty-inline">No evidence receipts available.</p>}</section></div>}
+        {view === "metrics" && <div className="view operational-view"><div className="module-heading"><div><span className="section-kicker"><Activity size={13} /> Platform observability</span><h1>System Health</h1><p>Live subsystem status from the VC Brain health endpoint.</p></div><span className="health-status"><CheckCircle2 size={14} /> {health?.status || "Unknown"}</span></div><section className="health-grid">{Object.entries(health?.subsystems || {}).map(([key, service]) => <article className="health-row" key={key}><span className="health-indicator" /><div><strong>{labelize(key)}</strong><small>{service.provider || "Configured service"}</small></div><span>{service.latency_p95_ms ? `${service.latency_p95_ms}ms p95` : service.nodes ? `${service.nodes} nodes` : "Operational"}</span><b>{service.status}</b></article>)}</section></div>}
+        {view === "graph" && <div className="view operational-view"><div className="module-heading"><div><span className="section-kicker"><Globe2 size={13} /> Relationship explorer</span><h1>Knowledge Graph</h1><p>Explore persisted ontology nodes and weighted relationships from the graph service.</p></div><span className="context-pill">{graph?.nodes?.length || 0} nodes · {graph?.edges?.length || 0} edges</span></div><section className="graph-workspace"><div className="graph-canvas">{graph?.nodes?.map((node, index) => <span className={`graph-node node-${index}`} key={node.id} title={String(node.properties.name || node.properties.full_name || node.id)}>{String(node.properties.name || node.properties.full_name || "Entity").slice(0, 16)}</span>) || <p className="empty-inline">Graph data unavailable.</p>}</div><aside className="graph-legend"><h2>Ontology</h2><p>Nodes and edges are loaded from the graph API. Select a node to continue exploration.</p>{graph?.nodes?.map(node => <div key={node.id}><b>{String(node.properties.name || node.properties.full_name)}</b><small>{node.labels.join(" · ")}</small></div>)}</aside></section></div>}
         {view === "company" && !activeFounder && <div className="view"><div className="module-empty"><Building2 size={22} /><h1>Company Intelligence</h1><p>Select a company from recent analyses or load verified founder records to begin research.</p><button className="primary-button" onClick={() => setView("discovery")}>Open Discovery Radar <ArrowRight size={14} /></button></div></div>}
         {view === "founder" && !activeFounder && <div className="view"><div className="module-empty"><Users size={22} /><h1>Founder Intelligence</h1><p>No verified founder record is selected yet.</p><button className="secondary-button" onClick={() => setView("search")}>Search founders <Search size={14} /></button></div></div>}
         {view === "reports" && !activeFounder && <div className="view"><div className="module-empty"><FileText size={22} /><h1>Reports & Memos</h1><p>No company is selected for memo generation.</p><button className="secondary-button" onClick={() => setView("pipeline")}>Open Deal Flow <ArrowRight size={14} /></button></div></div>}
