@@ -233,10 +233,15 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
   ]);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
+  useEffect(() => {
     fetch(`${API_BASE}/dashboard/summary`).then(res => res.json()).then(setSummary).catch(() => {});
     fetch(`${API_BASE}/founders`).then(res => res.json()).then(data => {
-      setFounders(data);
-      if (data.length > 0 && !selectedFounderId) setSelectedFounderId(data[0].founder_id);
+      const records = Array.isArray(data) ? data : Array.isArray(data?.founders) ? data.founders : Array.isArray(data?.records) ? data.records : [];
+      setFounders(records);
+      if (records.length > 0 && !selectedFounderId) setSelectedFounderId(records[0].founder_id);
     }).catch(() => {});
     fetch(`${API_BASE}/signals`).then(res => res.json()).then(data => setSignals(data.signals || [])).catch(() => {});
   }, []);
@@ -254,10 +259,17 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
           </div>
         </div>
         <nav aria-label="Main Navigation">
-          <p className="eyebrow">VIW 12 Modules</p>
-          {navItems.map(({ id, label, icon: Icon }) => (
+          <p className="eyebrow">Workspace</p>
+          {navItems.slice(0, 10).map(({ id, label, icon: Icon }) => (
             <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => { setView(id); setSidebarOpen(false); }}>
-              <Icon size={17} />
+              <Icon size={16} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+          <p className="eyebrow nav-section">Platform</p>
+          {navItems.slice(10).map(({ id, label, icon: Icon }) => (
+            <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => { setView(id); setSidebarOpen(false); }}>
+              <Icon size={16} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -267,9 +279,12 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
       {/* Topbar */}
       <header className="topbar">
         <div className="topbar-title">
-          <button className="icon-button menu-button" onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={20} /></button>
+          <button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(!sidebarOpen)}><Menu size={20} /></button>
           <span>{viewTitles[view]}</span>
         </div>
+        <button className="command-search" aria-label="Open semantic search" onClick={() => setView("search")}>
+          <Search size={14} aria-hidden="true" /><span>Search companies, founders, evidence...</span><kbd>⌘ K</kbd>
+        </button>
         <div className="top-actions">
           <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -288,10 +303,20 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
           <div className="view">
             <section className="hero-row">
               <div>
-                <span className="section-kicker"><Sparkles size={14} /> Venture Intelligence Dashboard</span>
-                <h1>{summary.active_opportunities} Active Opportunities Under Evaluation</h1>
-                <p>Derived from {summary.raw_signals} ingested signals across {summary.founder_records} Golden Master Records.</p>
+                <span className="section-kicker"><Sparkles size={14} /> Investment workspace / Monday, Aug 9</span>
+                <h1>Good morning, {user.displayName.split(" ")[0]}</h1>
+                <p>Here is what changed across your active thesis, sourcing queue, and diligence work.</p>
               </div>
+              <div className="hero-actions">
+                <button className="secondary-button" onClick={() => setView("search")}><Search size={14} /> Find a company</button>
+                <button className="primary-button" onClick={() => setView("discovery")}><Plus size={14} /> Add opportunity</button>
+              </div>
+            </section>
+            <section className="metrics-grid">
+              <article className="metric-card"><div className="metric-icon blue"><Target size={17} /></div><div><p>Active opportunities</p><strong>{summary.active_opportunities}</strong><small>Across your pipeline</small></div><span className="metric-trend">+12%</span></article>
+              <article className="metric-card"><div className="metric-icon violet"><FileText size={17} /></div><div><p>Memos ready</p><strong>{summary.memo_ready}</strong><small>Awaiting review</small></div><span className="metric-trend">+4</span></article>
+              <article className="metric-card"><div className="metric-icon green"><ShieldCheck size={17} /></div><div><p>Verified claims</p><strong>{summary.verified_claims}</strong><small>Evidence-backed</small></div><span className="metric-trend">+18%</span></article>
+              <article className="metric-card"><div className="metric-icon orange"><Radar size={17} /></div><div><p>New signals</p><strong>{summary.raw_signals}</strong><small>Last 7 days</small></div><span className="metric-trend">Live</span></article>
             </section>
             <section className="brief-grid">
               <article className="panel">
