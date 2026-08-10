@@ -33,7 +33,7 @@ export default async function Page({
           </span>
         </div>
         <Link prefetch={false} className="secondary-button" href={loginHref}>
-          Sign in
+          Sign in to your investment operating system
           <ArrowRight size={14} />
         </Link>
       </nav>
