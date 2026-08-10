@@ -294,6 +294,11 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
 
   return (
     <div className={`app-shell ${theme}`}>
+      {/* Mobile Sidebar Scrim */}
+      {sidebarOpen && (
+        <div className="scrim" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+      )}
+
       {/* Sidebar Navigation */}
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-top">
@@ -301,6 +306,9 @@ export default function VCWorkspace({ currentUser, user: propUser }: { currentUs
             <span className="logo-mark"><span /><span /><span /><span /></span>
             <span><strong>VC Brain</strong><small>Intelligence OS</small></span>
           </div>
+          <button className="icon-button sidebar-close" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}>
+            <X size={16} />
+          </button>
         </div>
         <nav aria-label="Main Navigation">
           <p className="eyebrow">Workspace</p>
