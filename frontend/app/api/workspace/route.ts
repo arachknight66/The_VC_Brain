@@ -85,7 +85,7 @@ export async function PUT(request: Request) {
 
     if (!updated) {
       const [current] = await context.db.select().from(workspaceStates).where(eq(workspaceStates.organizationId, context.organization.id)).limit(1);
-      return Response.json({ error: "Account data changed in another session", workspace: JSON.parse(current?.stateJson || "{}"), version: current?.version ?? 0 }, { status: 409 });
+      return Response.json({ error: "Workspace changed in another session", workspace: JSON.parse(current?.stateJson || "{}"), version: current?.version ?? 0 }, { status: 409 });
     }
 
     await context.db.insert(auditEvents).values({
