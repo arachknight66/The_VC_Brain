@@ -1,0 +1,44 @@
+[
+  {
+    "accelerator": "Y Combinator",
+    "batch": "W2025",
+    "companies": [
+      "Flowbench",
+      "AgentMesh",
+      "Decagon AI",
+      "TensorScale",
+      "PromptArmor"
+    ]
+  },
+  {
+    "accelerator": "Y Combinator",
+    "batch": "S2024",
+    "companies": [
+      "Cartesia",
+      "K-Scale Labs",
+      "Bifrost Security",
+      "OmniParser",
+      "Cognitive Kernel"
+    ]
+  },
+  {
+    "accelerator": "Techstars",
+    "batch": "NYC 2025",
+    "companies": [
+      "Ledgerly",
+      "DataPilot",
+      "Synthetica Health",
+      "Veritas Risk"
+    ]
+  },
+  {
+    "accelerator": "Sequoia Arc",
+    "batch": "Fall 2024",
+    "companies": [
+      "Ridgeline Dev Tools",
+      "NeuralEdge",
+      "HyperVector",
+      "ContextGrid"
+    ]
+  }
+]

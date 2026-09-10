@@ -11,6 +11,7 @@ SOURCE_DOMAINS = {
     "substack": ("substack.com",),
     "devpost": ("devpost.com",),
     "linkedin": ("linkedin.com/in", "linkedin.com/company"),
+    "producthunt": ("producthunt.com",),
 }
 
 

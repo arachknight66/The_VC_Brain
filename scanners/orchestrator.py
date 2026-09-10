@@ -5,10 +5,18 @@ from dataclasses import dataclass
 
 from memory.signal_store import SignalStore
 from memory.signals import Signal
-from scanners import github
-from scanners import web
+from scanners import accelerators, arxiv, github, web
 
-SUPPORTED_SOURCES = ("github", "x", "substack", "devpost", "linkedin")
+SUPPORTED_SOURCES = (
+    "github",
+    "arxiv",
+    "producthunt",
+    "accelerator",
+    "x",
+    "substack",
+    "devpost",
+    "linkedin",
+)
 
 
 @dataclass
@@ -48,9 +56,14 @@ def run_scanners(
     errors: dict[str, str] = {}
     for source in requested:
         try:
-            found = github.scan(normalized_query, max_results=max_results) if source == "github" else web.scan(
-                source, normalized_query, max_results=max_results
-            )
+            if source == "github":
+                found = github.scan(normalized_query, max_results=max_results)
+            elif source == "arxiv":
+                found = arxiv.scan(normalized_query, max_results=max_results)
+            elif source == "accelerator":
+                found = accelerators.scan(normalized_query, max_results=max_results)
+            else:
+                found = web.scan(source, normalized_query, max_results=max_results)
             signals.extend(found)
         except Exception as exc:  # one external source must not abort the scan run
             errors[source] = str(exc)

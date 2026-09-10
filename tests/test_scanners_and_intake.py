@@ -4,8 +4,8 @@ from memory.signal_store import SignalStore
 from memory.signals import Signal
 from memory.models import FounderRecord, TrustClaim
 from memory.store import FounderStore
-from scanners import github, web
-from scanners.orchestrator import run_scanners
+from scanners import accelerators, arxiv, github, web
+from scanners.orchestrator import SUPPORTED_SOURCES, run_scanners
 
 
 class FakeResponse:
@@ -130,3 +130,104 @@ def test_dashboard_summary_uses_persisted_workflow_metrics(tmp_path, monkeypatch
     assert summary["high_confidence_scores"] == 1
     assert summary["verified_claims"] == 1
     assert summary["unverified_claims"] == 1
+
+
+class FakeArxivResponse:
+    def __init__(self, xml_text: str) -> None:
+        self.text = xml_text
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+ARXIV_SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/2602.01234v1</id>
+    <title>Scalable Agent Infrastructure for Venture Intelligence</title>
+    <summary>We present an auditable multi-agent pipeline for investment memo synthesis.</summary>
+    <published>2026-02-15T10:00:00Z</published>
+    <updated>2026-02-15T10:00:00Z</updated>
+    <author><name>Dr. Jane Doe</name></author>
+    <author><name>Alex Smith</name></author>
+    <link rel="alternate" href="https://arxiv.org/abs/2602.01234" type="text/html"/>
+    <category term="cs.AI"/>
+    <category term="cs.SE"/>
+  </entry>
+</feed>
+"""
+
+
+def test_arxiv_scanner_normalizes_public_api(monkeypatch):
+    monkeypatch.setattr(arxiv.requests, "get", lambda *args, **kwargs: FakeArxivResponse(ARXIV_SAMPLE_XML))
+    signals = arxiv.scan("agent infrastructure", max_results=3)
+    assert len(signals) == 1
+    signal = signals[0]
+    assert signal.source == "arxiv"
+    assert signal.external_id == "http://arxiv.org/abs/2602.01234v1"
+    assert signal.title == "Scalable Agent Infrastructure for Venture Intelligence"
+    assert signal.source_url == "https://arxiv.org/abs/2602.01234"
+    assert "auditable multi-agent pipeline" in signal.summary
+    assert signal.raw_payload["authors"] == ["Dr. Jane Doe", "Alex Smith"]
+    assert signal.raw_payload["categories"] == ["cs.AI", "cs.SE"]
+    assert signal.score > 0
+
+
+def test_producthunt_scan_enforces_domain(monkeypatch):
+    monkeypatch.setattr(
+        web,
+        "search",
+        lambda *args, **kwargs: [
+            {
+                "title": "Product Launch",
+                "url": "https://www.producthunt.com/posts/flowbench",
+                "content": "Collaborative pipeline debugger",
+                "score": 0.88,
+            },
+            {"title": "Noise", "url": "https://other.com/flowbench", "content": "Ignore", "score": 0.99},
+        ],
+    )
+    signals = web.scan("producthunt", "Flowbench")
+    assert [signal.source_url for signal in signals] == ["https://www.producthunt.com/posts/flowbench"]
+    assert signals[0].source == "producthunt"
+    assert signals[0].score == 88.0
+
+
+def test_accelerator_scanner_matches_known_company():
+    matched = accelerators.scan("Flowbench")
+    assert len(matched) >= 1
+    signal = matched[0]
+    assert signal.source == "accelerator"
+    assert signal.raw_payload["company"] == "Flowbench"
+    assert signal.raw_payload["accelerator"] == "Y Combinator"
+    assert signal.raw_payload["batch"] == "W2025"
+    assert signal.score >= 90.0
+
+    unmatched = accelerators.scan("unrelated-xyz-random-query")
+    assert unmatched == []
+
+
+def test_orchestrator_supports_all_sources(monkeypatch, tmp_path):
+    assert len(SUPPORTED_SOURCES) >= 7
+    for src in ("github", "arxiv", "producthunt", "accelerator", "x", "substack", "devpost", "linkedin"):
+        assert src in SUPPORTED_SOURCES
+
+    mock_signal = Signal(
+        source="test",
+        external_id="test-1",
+        title="Test Signal",
+        source_url="https://test.local/1",
+        summary="Test summary",
+        query="query",
+        score=75.0,
+    )
+    monkeypatch.setattr(github, "scan", lambda *args, **kwargs: [mock_signal])
+    monkeypatch.setattr(arxiv, "scan", lambda *args, **kwargs: [mock_signal])
+    monkeypatch.setattr(accelerators, "scan", lambda *args, **kwargs: [mock_signal])
+    monkeypatch.setattr(web, "scan", lambda *args, **kwargs: [mock_signal])
+
+    store = SignalStore(str(tmp_path / "signals_all.db"))
+    run = run_scanners("infra", list(SUPPORTED_SOURCES), store=store, persist=False)
+    assert len(run.signals) == len(SUPPORTED_SOURCES)
+    assert run.errors == {}
+
