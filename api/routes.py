@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
-from agents import investor_chat_agent
+from agents import investor_chat_agent, query_agent
 from agents.sourcing_agent import MAX_PITCH_BYTES, create_from_inbound, extract_pitch_text
 from memory.signal_store import SignalStore
 from memory.signals import Signal
@@ -55,6 +55,11 @@ class BriefingStepPayload(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     briefing_steps: list[BriefingStepPayload] = []
+
+
+class FounderSearchRequest(BaseModel):
+    query: str
+    limit: int = 20
 
 
 @router.post("/founders/inbound")
@@ -203,6 +208,25 @@ def get_dashboard_summary() -> dict:
         "average_signal_to_memo_seconds": round(sum(memo_times) / len(memo_times), 2)
         if memo_times
         else None,
+    }
+
+
+@router.post("/founders/search")
+def search_founders(payload: FounderSearchRequest) -> dict:
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="query must not be empty")
+
+    records = _store.list_all()
+    parsed_filters = query_agent.parse_query(query)
+    all_results = query_agent.run(query, records)
+    limited_results = all_results[:payload.limit]
+
+    return {
+        "query": payload.query,
+        "parsed_filters": parsed_filters,
+        "results": limited_results,
+        "count": len(limited_results),
     }
 
 
