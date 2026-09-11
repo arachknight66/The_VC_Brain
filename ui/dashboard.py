@@ -198,6 +198,89 @@ def render_build_evidence_panel() -> None:
                 st.markdown(f"[source]({entry['source_url']})")
 
 
+def render_multi_attribute_search() -> None:
+    st.header("Multi-Attribute Search")
+    st.caption("Parse and resolve compound natural-language queries across founders in one pass.")
+
+    with st.form("search_form"):
+        query = st.text_input(
+            "Natural Language Query",
+            placeholder="e.g. technical founder US pre-seed, or developer tools with accelerator history",
+        )
+        submitted = st.form_submit_button("Search Founders")
+
+    if not submitted or not query.strip():
+        if submitted and not query.strip():
+            st.warning("Please enter a search query.")
+        return
+
+    with st.spinner("Analyzing query and filtering founders..."):
+        try:
+            response = requests.post(
+                f"{API_BASE_URL}/founders/search",
+                json={"query": query.strip()},
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            st.error(f"Failed to query VC Brain search endpoint: {exc}")
+            return
+
+    parsed = data.get("parsed_filters", {})
+    st.subheader("Understood Criteria")
+    chips = []
+    if parsed.get("sector"):
+        chips.append(f"**Sector:** `{parsed['sector']}`")
+    if parsed.get("geography"):
+        chips.append(f"**Geography:** `{parsed['geography']}`")
+    if parsed.get("stage"):
+        chips.append(f"**Stage:** `{parsed['stage']}`")
+    if parsed.get("technical_founder") is not None:
+        chips.append(f"**Technical:** `{'Yes' if parsed['technical_founder'] else 'No'}`")
+    if parsed.get("has_funding_history") is not None:
+        chips.append(f"**Prior Funding:** `{'Yes' if parsed['has_funding_history'] else 'No'}`")
+    if parsed.get("has_accelerator_history") is not None:
+        chips.append(f"**Accelerator:** `{'Yes' if parsed['has_accelerator_history'] else 'No'}`")
+    if parsed.get("min_traction_signal") is not None:
+        chips.append(f"**Traction Required:** `{'Yes' if parsed['min_traction_signal'] else 'No'}`")
+    if parsed.get("keywords"):
+        kws = ", ".join(f"`{k}`" for k in parsed["keywords"])
+        chips.append(f"**Keywords:** {kws}")
+
+    if chips:
+        st.markdown(" • ".join(chips))
+    else:
+        st.caption("No specific criteria extracted; soft search applied.")
+
+    st.divider()
+
+    results = data.get("results", [])
+    if not results:
+        st.info("No matching founders found for the specified criteria.")
+        return
+
+    st.subheader(f"Ranked Matches ({len(results)})")
+    rows = []
+    for item in results:
+        f = item.get("founder", {})
+        raw = f.get("raw_inputs", {})
+        rows.append(
+            {
+                "Company": f.get("company_name"),
+                "Founder": f.get("name"),
+                "Match Score": item.get("match_score"),
+                "Sector": raw.get("sector") or "Unknown",
+                "Stage": raw.get("stage") or "Unknown",
+                "Geography": raw.get("geography") or "Unknown",
+                "Founder Score": f.get("founder_score", {}).get("value"),
+                "Build Evidence": f.get("build_evidence", {}).get("tier"),
+            }
+        )
+    df = pd.DataFrame(rows).sort_values("Match Score", ascending=False)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def main() -> None:
     st.title("VC Brain")
     st.caption("Sourcing → Screening → Diligence → Decision, compressed into a fast, auditable pipeline.")
@@ -208,9 +291,11 @@ def main() -> None:
         st.error(f"Cannot reach the VC Brain API at {API_BASE_URL}. Start it with: `uvicorn api.main:app --reload`")
         st.stop()
 
-    view = st.sidebar.radio("View", ["Ranked List", "Memo View", "Build Evidence Panel"])
+    view = st.sidebar.radio("View", ["Ranked List", "Multi-Attribute Search", "Memo View", "Build Evidence Panel"])
     if view == "Ranked List":
         render_ranked_list()
+    elif view == "Multi-Attribute Search":
+        render_multi_attribute_search()
     elif view == "Memo View":
         render_memo_view()
     else:
